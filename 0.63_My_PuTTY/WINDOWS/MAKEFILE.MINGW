@@ -111,7 +111,6 @@ RC = $(TOOLPATH)windres
 CPP = $(TOOLPATH)g++
 AR = $(TOOLPATH)ar
 RANLIB = $(TOOLPATH)ranlib
-UPX = upx
 # Uncomment the following two lines to compile under Winelib
 # CC = winegcc
 # RC = wrc
@@ -159,12 +158,6 @@ CFLAGS += -DWINVER=0x0500 -D_WIN32_WINDOWS=0x0410 -D_WIN32_WINNT=0x0501
 	if [ -f kitty.dll ] ; then cp -f kitty.dll ../../bin/ ; fi
 	if [ -f putty_portable.exe ] ; then cp -f putty_portable.exe ../../bin/ ; fi
 	if [ -f putty_notrans.exe ] ; then cp -f putty_notrans.exe ../../bin/ ; fi
-	$(UPX) ../../bin/*.exe
-	cp -f ../../cthelper/cthelper.exe ../../bin/
-	cp -f ../../cthelper/cygwin1.dll ../../bin/
-	cp -f ../../zmodem/rz.exe ../../bin/
-	cp -f ../../zmodem/sz.exe ../../bin/
-	cp -f ../../genpass.exe ../../bin/
 
 all: pageant.exe plink.exe pscp.exe psftp.exe putty.exe puttygen.exe \
 		puttytel.exe
@@ -1228,7 +1221,6 @@ kitty_dll.res.o: ../../kitty_dll.c
 
 kitty.dll: kitty_dll.res.o
 	$(CC) -shared -o kitty.dll kitty_dll.res.o
-	upx --best --compress-icons=2 kitty.dll
 
 portable: putty_portable.exe
 
