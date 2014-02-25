@@ -60,8 +60,6 @@ void xyz_updateMenuItems(Terminal *term);
 
 #define IDB_OK	1098
 
-#include "../../MD5check.h"
-
 #define SI_INIT 0
 #define SI_NEXT 1
 #define SI_RANDOM 2
@@ -4581,19 +4579,6 @@ void InitWinMain( void ) {
 	if( ReadParameter( INIT_SECTION, "KiClassName", buffer ) ) 
 		{ if( strlen( buffer ) > 0 ) strcpy( KiTTYClassName, buffer ) ; }
 	appname = KiTTYClassName ;
-#endif
-
-	// Teste l'integrite du programme
-#ifndef NO_TRANSPARENCY
-	FILE *fp = fopen( "kitty.err.log","r" ) ;
-	if( fp==NULL ) {
-		if( !CheckMD5Integrity() ) {
-			fprintf(stderr,"La signature du programme n'est pas bonne\n");
-			MessageBox( NULL, "Wrong program signature !\n\nThe program is irremediably altered.\nDownload a new version from official web site:\n", "Error", MB_OK|MB_ICONERROR ) ;
-			exit(1);
-			}
-		}
-	else { fclose( fp ) ; }
 #endif
 
 	// Initialise le tableau des menus
