@@ -60,12 +60,48 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	ofn.lpstrTitle		= szTitle;
 	ofn.Flags		= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST 
 				| OFN_HIDEREADONLY | OFN_LONGNAMES
-				| OFN_ALLOWMULTISELECT
-				| OFN_EXPLORER
+				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
 				;
 
 	// si aucun nom de fichier n'a été sélectionné, on abandonne
 	if(!GetOpenFileName(&ofn)) { return 0 ; }
+	else { return 1 ; }
+	}
+
+int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
+	char * szTitle = Title ;
+	char szFilter[256] ; strcpy( szFilter, Filter ) ;
+	// on remplace les caractères '|' par des caractères NULL.
+	int i = 0;
+	while(i < sizeof(szFilter) && szFilter[i] != '\0')
+	{
+		if(szFilter[i] == '|')
+			szFilter[i] = '\0';
+
+		i++;
+	}
+
+	// boîte de dialogue de demande d'ouverture de fichier
+	//char szFileName[_MAX_PATH + 1] = "";
+	char * szFileName = filename ;
+	szFileName[0] = '\0' ;
+	OPENFILENAME ofn	= {0};
+	ofn.lStructSize		= sizeof(OPENFILENAME);
+	ofn.hwndOwner		= hFrame;
+	ofn.lpstrFilter		= szFilter;
+	ofn.nFilterIndex	= 1;
+	ofn.lpstrFile		= szFileName;
+	//ofn.nMaxFile		= sizeof(szFileName);
+	ofn.nMaxFile		= 4096 ;
+	ofn.lpstrTitle		= szTitle;
+	ofn.lpstrDefExt 	= ".ktx" ;
+	ofn.Flags		= OFN_PATHMUSTEXIST 
+				| OFN_HIDEREADONLY | OFN_LONGNAMES | OFN_OVERWRITEPROMPT
+				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
+				;
+
+	// si aucun nom de fichier n'a été sélectionné, on abandonne
+	if(!GetSaveFileName(&ofn)) { return 0 ; }
 	else { return 1 ; }
 	}
 
@@ -318,4 +354,17 @@ void RunPuttyEd( HWND hwnd ) {
 			strcat( shortname, " -ed" );
 			RunCommand( hwnd, shortname ) ; 
 			}
+	}
+
+// Verifie si une mise a jour est disponible sur le site web
+extern char BuildVersionTime[256] ;
+void CheckVersionFromWebSite( HWND hwnd ) {
+	char buffer[1024]="", vers[1024]="" ;
+	int i ;
+	strcpy( vers, BuildVersionTime ) ;
+	for( i = 0 ; i < strlen( vers ) ; i ++ ) {
+		if( !(((vers[i]>='0')&&(vers[i]<='9'))||(vers[i]=='.')) ) { vers[i] = '\0' ; break ; }
+		}
+	sprintf( buffer, "http://www.9bis.net/kitty/check_update.php?version=%s", vers ) ;
+	ShellExecute(hwnd, "open", buffer, 0, 0, SW_SHOWDEFAULT);
 	}

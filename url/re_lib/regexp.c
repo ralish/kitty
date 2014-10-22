@@ -210,6 +210,7 @@ regcomp( char* exp)
 	register char *longest;
 	register int len;
 	int flags;
+	int i;														// Ajout HYPERLINKPORT
 
 	if (exp == NULL)
 		FAIL("NULL argument");
@@ -232,6 +233,9 @@ regcomp( char* exp)
 	if (r == NULL)
 		FAIL("out of space");
 
+	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->startp[i] != NULL) free( r->startp[i] ) ; r->startp[i] = NULL ; }		// Ajout HYPERLINKPORT
+	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->endp[i] != NULL) free( r->endp[i] ) ; r->endp[i] = NULL ; }		// Ajout HYPERLINKPORT
+	
 	/* Second pass: emit code. */
 	regparse = exp;
 	regnpar = 1;
@@ -294,7 +298,7 @@ reg( int paren, int* flagp)	/* paren - Parenthesized? */
 	register char *ret;
 	register char *br;
 	register char *ender;
-	register int parno;
+	register int parno=0;
 	int flags;
 
 	*flagp = HASWIDTH;	/* Tentatively. */
@@ -1210,3 +1214,12 @@ strcspn( char* s1, char* s2)
 	return(count);
 }
 #endif
+
+void regfree( regexp* r) {
+	int i ;
+	if( r==NULL ) return ;
+	if( r->regmust != NULL ) free( r->regmust ) ;
+	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->startp[i] != NULL) free( r->startp[i] ) ; r->startp[i] = NULL ; }
+	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->endp[i] != NULL) free( r->endp[i] ) ; r->endp[i] = NULL ; }
+	free(r) ;
+}

@@ -1,3 +1,7 @@
+// define recupere de WIN_RES.H
+#ifndef IDI_PUTTY_LAUNCH
+#define IDI_PUTTY_LAUNCH 9901
+#endif
 
 #define KLWM_NOTIFYICON		(WM_USER+2)
 static HMENU MenuLauncher = NULL ;
@@ -641,9 +645,10 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
 	TrayIcone.hIcon = LoadIcon((HINSTANCE) GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_PUTTY_LAUNCH));
 #ifdef FDJ
-	TrayIcone.szTip[1024] = "PuTTY\0" ;			// Le tooltip par défaut, soit rien
+	TrayIcone.szTip[1024] = (TCHAR*)"PuTTY\0" ;			// Le tooltip par défaut, soit rien
 #else
-	TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
+	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
+	strcpy( TrayIcone.szTip, "KiTTY That\'s all folks!\0" ) ;			// Le tooltip par défaut, soit rien
 #endif
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);

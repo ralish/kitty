@@ -183,8 +183,8 @@ static enum {
 static int descent;
 
 #ifndef NCFGCOLOURS
-#ifdef IVPORT
-#define NCFGCOLOURS 24
+#ifdef PERSOPORT
+#define NCFGCOLOURS 34
 #else
 #define NCFGCOLOURS 22
 #endif
@@ -203,12 +203,72 @@ static HBITMAP caretbm;
 #include "urlhack.h"
 static int urlhack_cursor_is_hand = 0;
 #endif
+
 #ifdef PERSOPORT
-#include "../../kitty.c"
+#include <process.h>
+#include <math.h>
+#include "../../kitty.h"
+#include "../../kitty_commun.h"
+#include "../../kitty_crypt.h"
+#include "../../kitty_launcher.h"
+#include "../../kitty_registry.h"
+#include "../../kitty_ssh.h"
+#include "../../kitty_tools.h"
+#include "../../kitty_win.h"
+void SendStrToTerminal( const char * str, const int len ) {
+	char c ;
+	int i ;
+	if( len <= 0 ) return ;
+	term_seen_key_event(term);
+	for( i=0 ; i<len ; i++ ) {
+		c=(unsigned char)str[i] ;
+		if (ldisc)
+			lpage_send(ldisc, CP_ACP, &c, 1, 1);
+		}
+	}
+// resize en convertissant en nombre de lignes et colonnes
+void resize( int height, int width ) { 
+	int w,h;
+
+	if( width!=-1 ) {
+		prev_rows = term->rows;
+		prev_cols = term->cols;
+
+		w = width / font_width ;
+		if (w < 1) w = 1;
+		h = height / font_height ;
+		if (h < 1) h = 1;
+		}
+	else {
+		h = prev_rows ;
+		w = prev_cols ;
+		}
+
+	term_size(term, h, w, conf_get_int(conf,CONF_savelines)) ; 
+	reset_window(0);
+
+	w = (width-conf_get_int(conf,CONF_window_border)*2) / font_width ;
+	if (w < 1) w = 1;
+	h = (height-conf_get_int(conf,CONF_window_border)*2) / font_height ;
+	if (h < 1) h = 1;
+	conf_set_int(conf,CONF_height,h); 
+	conf_set_int(conf,CONF_width,w); 
+	}
+//`colours'
+int return_offset_height(void) { return offset_height ; }
+int return_offset_width(void) { return offset_width ; }
+int return_font_height(void) { return font_height ; }
+int return_font_width(void) { return font_width ; }
+COLORREF return_colours258(void) { return colours[258]; }
+// prototypes de fonctions decrites dans winnet.c
+struct netscheduler_tag* netscheduler_new(void) ;
+void netscheduler_free(struct netscheduler_tag* netscheduler) ;
 #endif
+	
 #if (defined IMAGEPORT) && (!defined FDJ)
 #include "../../kitty_image.h"
 #endif
+	
 #ifdef RECONNECTPORT
 static time_t last_reconnect = 0;
 #endif
@@ -423,7 +483,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef PERSOPORT
 
 // Initialisation specifique a KiTTY
-hInstIcons = hinst ; 
+SethInstIcons( hinst ) ; 
 InitWinMain();
 
 #endif
@@ -462,7 +522,12 @@ InitWinMain();
 	conf_set_int(conf, CONF_logtype, LGTYP_NONE);
 
 	do_defaults(NULL, conf);
-
+#ifdef PERSOPORT
+	// On cree la session "Default Settings" si elle n'existe pas
+	{ char buffer[1024] ; GetSessionFolderName( "Default Settings", buffer ) ; 
+	if( strlen( buffer ) == 0 ) { save_settings( "Default Settings", conf ) ; }
+	}
+#endif
 	p = cmdline;
 
 	/*
@@ -548,7 +613,11 @@ InitWinMain();
 #ifdef PERSOPORT
 		} else if( !strcmp(p, "-pass") ) {
 			i++ ;
-			conf_set_str( conf, CONF_password, argv[i] ) ; //strcpy( cfg.password, argv[i] ) ;
+			char bufpass[1024] ;
+			strcpy( bufpass, argv[i] );
+			MASKPASS( bufpass ) ;
+			conf_set_str( conf, CONF_password, bufpass ) ; //strcpy( cfg.password, argv[i] ) ;
+			memset( bufpass, 0, strlen(bufpass) ) ;
 			memset( argv[i], 0, strlen(argv[i]) ) ;
 #ifdef CYGTERMPORT
 		} else if( !strcmp(p, "-cc") ) {
@@ -558,11 +627,13 @@ InitWinMain();
 			got_host = 1 ;
 #endif
 		} else if( !strcmp(p, "-auto_store_sshkey") ) {
-			AutoStoreSSHKeyFlag = 1 ;
+			SetAutoStoreSSHKeyFlag( 1 ) ;
 		} else if( !strcmp(p, "-cmd") ) {
 			i++ ;
 			conf_set_str( conf, CONF_autocommand, argv[i] ) ; //strcpy( cfg.autocommand, argv[i] ) ;
 			//cfg.remote_cmd_ptr=argv[i] ;
+		} else if( !strcmp(p, "-debug") ) {
+			debug_flag = 1 ;
 		} else if( !strcmp(p, "-fullscreen") ) {
 			conf_set_int( conf, CONF_fullscreen, 1 ) ; //cfg.fullscreen = 1 ;
 		} else if( !strcmp(p, "-initdelay") ) {
@@ -575,7 +646,7 @@ InitWinMain();
 			conf_set_int( conf, CONF_logxfovr,1 ) ; // cfg.logxfovr = 1 ;
 			conf_set_int( conf, CONF_logflush,1 ) ; // cfg.logflush = 1 ;
 		} else if( !strcmp(p, "-nofiles") ) {
-			NoKittyFileFlag = 1 ;
+			SetNoKittyFileFlag( 1 ) ;
 		} else if( !strcmp(p, "-edit") ) {
 			
 		} else if( !strcmp(p, "-folder") ) {
@@ -588,24 +659,26 @@ InitWinMain();
 			if( DirectoryBrowseFlag ) SetSessPath( pfolder ) ;
 			SetInitCurrentFolder( pfolder ) ;
 			i++ ;
-		} else if( !strcmp(p, "-version") ) {
+		} else if( !strcmp(p, "-version") || !strcmp(p, "-about") ) {
 			showabout(hwnd) ; exit( 0 ) ;
 		} else if( !strcmp(p, "-noicon") ) {
-			IconeFlag = -1 ;
+			SetIconeFlag( -1 ) ;
 		} else if( !strcmp(p, "-notrans") ) {
-			TransparencyFlag = 0;
+			SetTransparencyFlag( 0 ) ;
 			conf_set_int(conf,CONF_transparencynumber, -1) ;
 #ifdef ZMODEMPORT
 		} else if( !strcmp(p, "-zmodem") ) {
-			ZModemFlag = 1 ;
+			SetZModemFlag( 1 ) ;
 		} else if( !strcmp(p, "-nozmodem") ) {
-			ZModemFlag = 0 ;
+			SetZModemFlag( 0 ) ;
 #endif
 #ifdef HYPERLINKPORT
+#ifndef NO_HYPERLINK
 		} else if( !strcmp(p, "-hyperlink") ) {
 			HyperlinkFlag = 1 ;
 		} else if( !strcmp(p, "-nohyperlink") ) {
 			HyperlinkFlag = 0 ;
+#endif
 #endif
 		} else if( !strcmp(p, "-xpos") ) {
 			i++ ;
@@ -628,33 +701,35 @@ InitWinMain();
 			BackgroundImageFlag = 1 ;
 #endif
 		} else if( !strcmp(p, "-putty") ) {
-			AutoStoreSSHKeyFlag = 0 ;
-			UserPassSSHNoSave = 0 ;
-			NoKittyFileFlag = 1 ;
+			SetAutoStoreSSHKeyFlag( 0 ) ;
+			SetUserPassSSHNoSave( 0 ) ;
+			SetNoKittyFileFlag( 1 ) ;
 			HyperlinkFlag = 0 ;
-			IconeFlag = -1 ;
-			hInstIcons = hinst ; 
-			TransparencyFlag = 0 ;
+			SetIconeFlag( -1 ) ;
+			SethInstIcons( hinst ) ; 
+			SetTransparencyFlag( 0 ) ;
 			conf_set_int(conf,CONF_transparencynumber, -1) ;
-			ShortcutsFlag = 0 ;
-			MouseShortcutsFlag = 0 ;
-			SizeFlag = 0 ;
-			CapsLockFlag = 0 ;
-			WinHeight = -1 ;
-			ConfigBoxHeight = 7 ;
+			SetShortcutsFlag( 0 ) ;
+			SetMouseShortcutsFlag( 0 ) ;
+			SetSizeFlag( 0 ) ;
+			SetCapsLockFlag( 0 ) ;
+			SetWinHeight( -1 ) ;
+			SetConfigBoxHeight( 7 ) ;
 #ifdef CYGTERMPORT
 			cygterm_set_flag( 0 ) ;
 #endif
 #if (defined IMAGEPORT) && (!defined FDJ)
 			BackgroundImageFlag = 0 ;
 #endif
-			SessionFilterFlag = 0 ;
+			SetSessionFilterFlag( 0 ) ;
 			PuttyFlag = 1 ;
 			//SetWindowPos(GetForegroundWindow(), HWND_TOP, 0, 0, 0, 252, SWP_SHOWWINDOW|SWP_NOMOVE);
 		} else if( !strcmp(p, "-send-to-tray") ) {
-			AutoSendToTray = 1 ;
+			SetAutoSendToTray( 1 ) ;
 		} else if( !strcmp(p, "-sshhandler") ) {
 			CreateSSHHandler() ; return 0 ;
+		} else if( !strcmp(p, "-fileassoc") ) {
+			CreateFileAssoc() ; return 0 ;
 #ifndef FDJ
 		} else if( !strcmp(p, "-key") ) {
 			GenerePrivateKey( "private.key.ppk" ) ; return  0 ;
@@ -685,6 +760,18 @@ InitWinMain();
 			if( strlen(argv[i])>0 )
 				SendCommandAllWindows( hwnd, argv[i] ) ;
 			exit(0);
+		} else if( !strcmp(p, "-kload") ) {
+			i++ ;
+			if( strlen(argv[i])>0 ) {
+				load_open_settings_forced( argv[i], conf ) ;
+				got_host=1;
+			}
+		} else if( !strcmp(p, "-loadfile") ) {
+			i++ ;
+			if( strlen(argv[i])>0 ) {
+				load_open_settings_forced( argv[i], conf ) ;
+				got_host=1;
+			}
 #endif
 		} else if (!strcmp(p, "-cleanup") ||
 			   !strcmp(p, "-cleanup-during-uninstall")) {
@@ -875,12 +962,11 @@ InitWinMain();
 		}
 	    }
 	}
-
 #ifdef PERSOPORT
 	// Creation du fichier kitty.ini par defaut si besoin
 	CreateDefaultIniFile() ;
 #endif
-	
+
 	cmdline_run_saved(conf);
 
 	if (loaded_session || got_host)
@@ -889,7 +975,6 @@ InitWinMain();
 	if ((!allow_launch || !conf_launchable(conf)) && !do_config()) {
 	    cleanup_exit(0);
 	}
-
 	/*
 	 * Muck about with the hostname in various ways.
 	 */
@@ -950,31 +1035,21 @@ InitWinMain();
     }
 #ifdef PERSOPORT
 int xpos_init=0, ypos_init=0 ;
-	if( (conf_get_int(conf,CONF_saveonexit)/*cfg.saveonexit*/||conf_get_int(conf,CONF_save_windowpos)/*cfg.save_windowpos*/)
-		&& (conf_get_int(conf,CONF_xpos)/*cfg.xpos*/>=0) && (conf_get_int(conf,CONF_ypos)/*cfg.ypos*/>=0) ) {
-		xpos_init=conf_get_int(conf,CONF_xpos)/*cfg.xpos*/ ; if( xpos_init>(GetSystemMetrics(SM_CXSCREEN)-10) ) xpos_init = 10 ;
-		ypos_init=conf_get_int(conf,CONF_ypos)/*cfg.ypos*/ ; if( ypos_init>(GetSystemMetrics(SM_CYSCREEN)-10) ) ypos_init = 10 ;
+	if( (conf_get_int(conf,CONF_saveonexit)||conf_get_int(conf,CONF_save_windowpos))
+		&& (conf_get_int(conf,CONF_xpos)>=0) && (conf_get_int(conf,CONF_ypos)>=0) ) {
+		xpos_init=conf_get_int(conf,CONF_xpos) ; //if( xpos_init>(GetSystemMetrics(SM_CXSCREEN)-10) ) xpos_init = 10 ;
+		ypos_init=conf_get_int(conf,CONF_ypos) ; //if( ypos_init>(GetSystemMetrics(SM_CYSCREEN)-10) ) ypos_init = 10 ;
 		}
 
-while( conf_get_int(conf,CONF_icone)/*cfg.icone*/ > NumberOfIcons ) { 
-    conf_set_int( conf, CONF_icone, conf_get_int( conf, CONF_icone) - NumberOfIcons ) ;
-    //cfg.icone = cfg.icone - NumberOfIcons ;
-    }
+while( conf_get_int(conf,CONF_icone)/*cfg.icone*/ > GetNumberOfIcons() ) { 
+    conf_set_int( conf, CONF_icone, conf_get_int( conf, CONF_icone) - GetNumberOfIcons() ) ;
+}
+    
 if( conf_get_int(conf,CONF_icone)/*cfg.icone*/ == 0 ) {
-	if( IconeFlag > 0 ) IconeNum = time( NULL ) % NumberOfIcons ; else IconeNum = 0 ; 
-	}
-else	{
-	if( IconeFlag > 0 ) IconeNum = conf_get_int(conf,CONF_icone)/*cfg.icone*/ - 1 ; else IconeNum = 0 ; 
-	}
-	
-	{
-	char buf[256] ;
-	strcpy( buf, conf_get_str(conf,CONF_password) );
-	MASKPASS(buf);
-	conf_set_str(conf,CONF_password,buf);
-	//MASKPASS(cfg.password) ;
-	memset(buf,0,strlen(buf));
-	}
+	if( GetIconeFlag() > 0 ) SetIconeNum( time( NULL ) % GetNumberOfIcons() ) ; else SetIconeNum( 0 ) ; 
+} else{
+	if( GetIconeFlag() > 0 ) SetIconeNum( conf_get_int(conf,CONF_icone) - 1 ) ; else SetIconeNum( 0 ) ; 
+}
 #endif
 
     if (!prev) {
@@ -986,7 +1061,10 @@ else	{
 #ifdef PERSOPORT
 	if (conf_get_int(conf, CONF_ctrl_tab_switch))
 	    wndclass.cbWndExtra += 8;
-	wndclass.hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) );
+	if( GetIconeFlag() > 0 ) 
+		wndclass.hIcon = LoadIcon( GethInstIcons(), MAKEINTRESOURCE(IDI_MAINICON_0 + GetIconeNum() ) );
+	else
+		wndclass.hIcon = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
 #else
 	wndclass.hIcon = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
 #endif
@@ -1001,7 +1079,6 @@ else	{
 
 	RegisterClass(&wndclass);
     }
-
 #ifdef PERSOPORT
 // Initialisation de la structure NOTIFYICONDATA
 TrayIcone.cbSize = sizeof(TrayIcone);					// On alloue la taille necessaire pour la structure
@@ -1010,7 +1087,8 @@ TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;			// On lui indique les cha
 	// On lui dit qu'il devra "ecouter" son environement (clique de souris, etc)
 TrayIcone.uCallbackMessage = MYWM_NOTIFYICON;
 TrayIcone.hIcon = LoadIcon(NULL, NULL);					// On ne load aucune icone pour le moment
-TrayIcone.szTip[1024] = "PuTTY That\'s all folks!\0" ;			// Le tooltip par defaut, soit rien
+//TrayIcone.szTip[1024] = "PuTTY That\'s all folks!\0" ;			// Le tooltip par defaut, soit rien
+strcpy( TrayIcone.szTip, "PuTTY That\'s all folks!\0") ;			// Le tooltip par defaut, soit rien
 TrayIcone.hWnd = hwnd ;
 #endif
 
@@ -1053,6 +1131,14 @@ TrayIcone.hWnd = hwnd ;
 	    winmode &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
 	if (conf_get_int(conf, CONF_alwaysontop))
 	    exwinmode |= WS_EX_TOPMOST;
+#ifdef TUTTYPORT
+	if (!conf_get_int(conf, CONF_window_has_sysmenu))
+	    winmode &= ~(WS_SYSMENU);
+	if (!conf_get_int(conf, CONF_window_minimizable))
+	    winmode &= ~(WS_MINIMIZEBOX);
+	if (!conf_get_int(conf, CONF_window_maximizable))
+	    winmode &= ~(WS_MAXIMIZEBOX);
+#endif
 	if (conf_get_int(conf, CONF_sunken_edge))
 	    exwinmode |= WS_EX_CLIENTEDGE;
 #ifdef PERSOPORT
@@ -1078,6 +1164,7 @@ TrayIcone.hWnd = hwnd ;
 		// other location is necessary for our custom window text display for
 		// when we're handling our own border here.
 	}
+
 	hwnd = CreateWindowEx(exwinmode|WS_EX_ACCEPTFILES, appname, winname,
 			      winmode, CW_USEDEFAULT, CW_USEDEFAULT,
 			      guess_width, guess_height,
@@ -1189,6 +1276,9 @@ TrayIcone.hWnd = hwnd ;
 	char *str;
 
 	popup_menus[SYSMENU].menu = GetSystemMenu(hwnd, FALSE);
+#ifdef TUTTYPORT
+	EnableMenuItem(m, SC_CLOSE, conf_get_int(conf,CONF_window_closable) ? MF_ENABLED : MF_GRAYED);
+#endif
 	popup_menus[CTXMENU].menu = CreatePopupMenu();
 	AppendMenu(popup_menus[CTXMENU].menu, MF_ENABLED, IDM_PASTE, "&Paste");
 
@@ -1219,24 +1309,27 @@ TrayIcone.hWnd = hwnd ;
 			   == RESIZE_DISABLED) ? MF_GRAYED : MF_ENABLED,
 		       IDM_FULLSCREEN, "&Full Screen");
 #ifdef PERSOPORT
-	if( !PuttyFlag ) {
-		AppendMenu(m, MF_ENABLED, IDM_PRINT, "Print clip&board");
-		AppendMenu(m, MF_ENABLED, IDM_TOTRAY, "Send to tra&y");
-		if( conf_get_int(conf,CONF_alwaysontop)/*cfg.alwaysontop*/ )
-			AppendMenu(m, MF_ENABLED|MF_CHECKED, IDM_VISIBLE, "Always visi&ble");
-		else
-			AppendMenu(m, MF_ENABLED, IDM_VISIBLE, "Always visi&ble");
-		AppendMenu(m, MF_ENABLED, IDM_PROTECT, "Prote&ct");
-		AppendMenu(m, MF_ENABLED, IDM_WINROL, "Roll-up");
-		AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwarding");
-		AppendMenu(m, MF_ENABLED, IDM_SCRIPTFILE, "Send script file" ) ;
-		AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send with pscp");
-		if( WinSCPPath!=NULL ) AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start WinSCP");
-		else AppendMenu(m, MF_DISABLED|MF_GRAYED, IDM_WINSCP, "Start WinSCP");
-		}
+    if( !PuttyFlag ) {
+        AppendMenu(m, MF_ENABLED, IDM_PRINT, "Print clip&board");
+        AppendMenu(m, MF_ENABLED, IDM_TOTRAY, "Send to tra&y");
+        if( conf_get_int(conf,CONF_alwaysontop)/*cfg.alwaysontop*/ )
+            AppendMenu(m, MF_ENABLED|MF_CHECKED, IDM_VISIBLE, "Always visi&ble");
+        else
+            AppendMenu(m, MF_ENABLED, IDM_VISIBLE, "Always visi&ble");
+        AppendMenu(m, MF_ENABLED, IDM_PROTECT, "Prote&ct");
+        AppendMenu(m, MF_ENABLED, IDM_WINROL, "Roll-u&p");
+        AppendMenu(m, MF_ENABLED, IDM_SCRIPTFILE, "Send scr&ipt file" ) ;
+        if( PSCPPath!=NULL ) AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send wit&h pscp");
+        else AppendMenu(m, MF_DISABLED|MF_GRAYED, IDM_PSCP, "Send wit&h pscp");
+        if( WinSCPPath!=NULL ) AppendMenu(m, MF_ENABLED, IDM_WINSCP, "&Start WinSCP");
+        else AppendMenu(m, MF_DISABLED|MF_GRAYED, IDM_WINSCP, "&Start WinSCP");
+        AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Po&rt forwarding");
+	AppendMenu(m, MF_SEPARATOR, 0, 0);
+	AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings" ) ;
+        }
 #endif
 #ifdef ZMODEMPORT
-	if( (!PuttyFlag) && ZModemFlag ) {
+	if( (!PuttyFlag) && GetZModemFlag() ) {
 	    AppendMenu(m, MF_SEPARATOR, 0, 0);
 	    AppendMenu(m, term->xyz_transfering?MF_GRAYED:MF_ENABLED, IDM_XYZSTART, "&Zmodem Receive");
 	    AppendMenu(m, term->xyz_transfering?MF_GRAYED:MF_ENABLED, IDM_XYZUPLOAD, "Zmodem &Upload");
@@ -1252,9 +1345,11 @@ TrayIcone.hWnd = hwnd ;
 	}
     }
 #ifdef PERSOPORT
+	// SETTINGS specifique a la session
+    
 	if( !PuttyFlag ) {
 		// Lancement automatique dans le Tray
-		if( conf_get_int(conf,CONF_sendtotray)/*cfg.sendtotray*/ ) AutoSendToTray = 1 ;
+		if( conf_get_int(conf,CONF_sendtotray)/*cfg.sendtotray*/ ) SetAutoSendToTray( 1 ) ;
 			
 		// Charge le fichier de script d'initialisation si il existe
 		ScriptFileContent = NULL ;
@@ -1286,7 +1381,7 @@ TrayIcone.hWnd = hwnd ;
 			}
 
 #ifndef NO_TRANSPARENCY
-		if( TransparencyFlag && conf_get_int(conf,CONF_transparencynumber)/*cfg.transparencynumber*/ != -1 ) {
+		if( GetTransparencyFlag() && conf_get_int(conf,CONF_transparencynumber)/*cfg.transparencynumber*/ != -1 ) {
 			if( conf_get_int(conf,CONF_transparencynumber)/*cfg.transparencynumber*/ > 0 ) { 
 				SetTransparency( hwnd, 255-conf_get_int(conf,CONF_transparencynumber)/*cfg.transparencynumber*/ ) ;
 				}
@@ -1328,6 +1423,9 @@ else {
 #endif
 
 #endif
+#ifdef PORTKNOCKINGPORT
+ManagePortKnocking(conf_get_str(conf,CONF_host),conf_get_str(conf,CONF_portknockingoptions));
+#endif
 
     start_backend();
 #ifdef HYPERLINKPORT
@@ -1336,13 +1434,15 @@ else {
 	 * Hyperlink stuff: Set the regular expression
 	 */
 	if( !PuttyFlag && HyperlinkFlag ) {
-		if( strlen( conf_get_str(conf,CONF_url_regex))==0 ) { conf_set_str(conf,CONF_url_regex,"@°@°@NO REGEX--") ; /*conf_set_int( conf, CONF_url_defregex, 1 ) ;*/ }
-		if( strlen( conf_get_str(term->conf,CONF_url_regex))==0 ) { conf_set_str(term->conf,CONF_url_regex,"@°@°@NO REGEX--") ; /*conf_set_int( term->conf, CONF_url_defregex, 1 ) ;*/ }
+		if( strlen( conf_get_str(conf,CONF_url_regex))==0 ) { conf_set_str(conf,CONF_url_regex,"@°@°@NO REGEX--") ; }
+		if( strlen( conf_get_str(term->conf,CONF_url_regex))==0 ) { conf_set_str(term->conf,CONF_url_regex,"@°@°@NO REGEX--") ; }
 		
-		if( conf_get_int(term->conf,CONF_url_defregex)/*term->cfg.url_defregex*/ == 0) {
-			urlhack_set_regular_expression(URLHACK_REGEX_CLASSIC,conf_get_str(term->conf,CONF_url_regex)/*term->cfg.url_regex*/);
-			}
+		if( conf_get_int(term->conf,CONF_url_defregex) != 0 ) {
+			urlhack_set_regular_expression(URLHACK_REGEX_CLASSIC, conf_get_str(term->conf,CONF_url_regex) ) ;
+		} else {
+			urlhack_set_regular_expression(URLHACK_REGEX_CUSTOM, conf_get_str(term->conf, CONF_url_regex) ) ;
 		}
+	}
 #endif
 
     /*
@@ -1388,7 +1488,7 @@ else {
 		close_session();
 #endif
 #ifdef ZMODEMPORT
-	     if( ZModemFlag ) continue;
+	     if( GetZModemFlag() ) continue;
 #endif
 	} else
 	    sfree(handles);
@@ -1402,7 +1502,7 @@ else {
 	    /* Send the paste buffer if there's anything to send */
 	    term_paste(term);
 #ifdef ZMODEMPORT
-	    	    if (ZModemFlag && xyz_Process(back, backhandle, term))
+	    	    if( GetZModemFlag() && xyz_Process(back, backhandle, term))
 		    continue;
 #endif
 	    /* If there's nothing new in the queue then we can do everything
@@ -1471,7 +1571,7 @@ void cleanup_exit(int code)
 	Embryon de mecanisme de retour a la config box en sortant d'une session.
 	Le probleme est que ca retourne a la config box aussi en sortant ... de la config box si une session est chargee ...
 	*/
-	if( !PuttyFlag && ConfigBoxNoExitFlag )
+	if( !PuttyFlag && GetConfigBoxNoExitFlag() )
 	if( backend_connected && strlen(conf_get_str(conf,CONF_sessionname))>0 ) {
 		char buffer[4096]="",shortname[1024]="" ; ;
 		if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
@@ -1690,8 +1790,8 @@ void connection_fatal(void *frontend, char *fmt, ...)
  		time_t tnow = time(NULL);
  		close_session();
  
- 		if(last_reconnect && (tnow - last_reconnect) < 5) {
- 			Sleep(5000);
+ 		if(last_reconnect && (tnow - last_reconnect) < GetReconnectDelay() ) {
+ 			Sleep(1000);
  		}
  
  		last_reconnect = tnow;
@@ -1777,10 +1877,19 @@ static void conftopalette(void)
     static const int ww[] = {
 	256, 257, 258, 259, 260, 261,
 	0, 8, 1, 9, 2, 10, 3, 11,
+#ifdef TUTTYPORT
+	4, 12, 5, 13, 6, 14, 7, 15,
+	262, 263, 264, 265, 266, 267,
+	268, 269, 270, 271, 272, 273
+    };
+
+    for (i = 0; i < NCFGCOLOURS; i++) {
+#else
 	4, 12, 5, 13, 6, 14, 7, 15
     };
 
     for (i = 0; i < 22; i++) {
+#endif
 	int w = ww[i];
 	defpal[w].rgbtRed = conf_get_int_int(conf, CONF_colours, i*3+0);
 	defpal[w].rgbtGreen = conf_get_int_int(conf, CONF_colours, i*3+1);
@@ -2647,7 +2756,7 @@ static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
 	if (hwnd_next == 0) 
 	    hwnd_next = hwnd_lo_date_time - info->next_lo_date_time;
 	hwnd_next *= info->direction;
-	if (hwnd_self > 0 && hwnd_next < 0 || (hwnd_self > 0 || hwnd_next < 0) && info->next_self <= 0) {
+	if( ((hwnd_self > 0) && (hwnd_next < 0)) || (((hwnd_self > 0) || (hwnd_next < 0)) && (info->next_self <= 0)) ) {
 	    info->next = hwnd;
 	    info->next_hi_date_time = hwnd_hi_date_time;
 	    info->next_lo_date_time = hwnd_lo_date_time;
@@ -2739,13 +2848,11 @@ else if((UINT_PTR)wParam == TIMER_INIT) {  // Initialisation
 	// Lancement d'une (ou plusieurs separees par \\n) commande(s) automatique(s) a l'initialisation
 	KillTimer( hwnd, TIMER_INIT ) ;
 
-	if( conf_get_int(conf,CONF_protocol)/*cfg.protocol*/ == PROT_TELNET ) {
-		if( strlen( conf_get_str(conf,CONF_username)/*cfg.username*/ ) > 0 ) {
-			//strcpy( buffer, conf_get_str(conf,CONF_username)/*cfg.username*/ ) ; strcat( buffer, "\\n\\p" ) ; 
-			if( strlen( conf_get_str(conf,CONF_password)/*cfg.password*/ ) > 0 ) {
+	if( conf_get_int(conf,CONF_protocol) == PROT_TELNET ) {
+		if( strlen( conf_get_str(conf,CONF_username) ) > 0 ) {
+			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 				char bufpass[256]; strcpy(bufpass,conf_get_str(conf,CONF_password)) ;
 				MASKPASS(bufpass); strcat(buffer,bufpass); memset(bufpass,0,strlen(bufpass));
-				//MASKPASS(cfg.password); strcat( buffer, cfg.password ) ; MASKPASS(cfg.password);
 				strcat( buffer, "\\n" ) ;
 				}
 			}
@@ -2760,7 +2867,7 @@ else if((UINT_PTR)wParam == TIMER_INIT) {  // Initialisation
 		}
 
 	// Envoi automatiquement dans le systeme tray si besoin
-	if( AutoSendToTray ) ManageToTray( hwnd ) ;
+	if( GetAutoSendToTray() ) ManageToTray( hwnd ) ;
 	
 	// Maximize automatic
 	if( conf_get_int(conf,CONF_maximize) /*cfg.maximize*/ ) { PostMessage( hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, (LPARAM)NULL ) ; }
@@ -2861,15 +2968,14 @@ else if( BackgroundImageFlag && ((UINT_PTR)wParam == TIMER_SLIDEBG) ) {  // Chan
 	}
 #endif
 else if((UINT_PTR)wParam == TIMER_REDRAW) {  // rafraichissement automatique (bug d'affichage)
-	InvalidateRect( hwnd, NULL, TRUE ) ;
+	//RefreshBackground( hwnd ) ; // On inhibe cette fonction a cause du probleme de fuite memoire due a l'image de fond !!! 
+	InvalidateRect( hwnd, NULL, TRUE ) ; // On remplace par
 	
 	// Envoi de l'anti-idle
-	if( AntiIdleCount++ >= AntiIdleCountMax ) {
-	//if( AntiIdleCount++ >= 0 )  {
+	AntiIdleCount += 1 ;
+	if( AntiIdleCount >= AntiIdleCountMax ) {
 		AntiIdleCount = 0 ;
-		//if(strlen( cfg.antiidle ) > 0) SendAutoCommand( hwnd, cfg.antiidle ) ;
-		//else if( strlen( AntiIdleStr ) > 0 ) SendAutoCommand( hwnd, AntiIdleStr ) ;
-		if(strlen( conf_get_str(conf,CONF_antiidle)/*cfg.antiidle*/ ) > 0) SendAutoCommand( hwnd, conf_get_str(conf,CONF_antiidle)/*cfg.antiidle*/ ) ;
+		if(strlen( conf_get_str(conf,CONF_antiidle) ) > 0) SendAutoCommand( hwnd, conf_get_str(conf,CONF_antiidle) ) ;
 		else if( strlen( AntiIdleStr ) > 0 ) SendAutoCommand( hwnd, AntiIdleStr ) ;
 		}
 	}
@@ -2877,7 +2983,7 @@ else if((UINT_PTR)wParam == TIMER_BLINKTRAYICON) {  // Clignotement de l'icone d
 	static int BlinkingState = 0 ;
 	static HICON hBlinkingIcon = NULL ; 
 
-	if( VisibleFlag!=VISIBLE_TRAY ) 
+	if( GetVisibleFlag()!=VISIBLE_TRAY ) 
 		{ KillTimer( hwnd, TIMER_BLINKTRAYICON ) ; TrayIcone.hIcon = hBlinkingIcon ; BlinkingState = 0 ; break ; }
 	if( BlinkingState==0 ) {
 		hBlinkingIcon = TrayIcone.hIcon ;
@@ -2903,17 +3009,18 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	      {
 		// Initialiation
 		MainHwnd = hwnd ;
-		SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)/*cfg.iconefile*/->path, conf_get_int(conf,CONF_icone)/*cfg.icone*/, SI_INIT ) ;
+		if( GetIconeFlag() != -1 )
+			SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)->path, conf_get_int(conf,CONF_icone), SI_INIT ) ;
 
 		// Gestion de la transparence
-		if( TransparencyFlag && conf_get_int(conf,CONF_transparencynumber) >= 0 ) {
+		if( GetTransparencyFlag() && conf_get_int(conf,CONF_transparencynumber) >= 0 ) {
 			SetWindowLongPtr(hwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED ) ;
 			//SetLayeredWindowAttributes(hwnd, 0, TransparencyNumber, LWA_ALPHA) ;
 			SetTransparency( hwnd, 255-conf_get_int(conf,CONF_transparencynumber) ) ;
 			}
 
 #if (defined IMAGEPORT) && (!defined FDJ)
-		if( IconeFlag == -1 ) conf_set_int( conf, CONF_bg_type, 0 ) ; //cfg.bg_type = 0 ;
+		if( GetIconeFlag() == -1 ) conf_set_int( conf, CONF_bg_type, 0 ) ; //cfg.bg_type = 0 ;
 		if( !BackgroundImageFlag ) conf_set_int( conf, CONF_bg_type,0 ); //cfg.bg_type = 0 ;
 #endif
 		if( !PuttyFlag )
@@ -2932,7 +3039,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
       case WM_CLOSE:
 	{
 #ifdef PERSOPORT
-	if( ProtectFlag ) {
+	if( GetProtectFlag() ) {
 		MessageBox(hwnd,
 			   "You are not allowed to close a protected window",
 			   "Exit warning", MB_ICONERROR | MB_OK ) ;
@@ -3011,12 +3118,6 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		HANDLE filemap = NULL;
 
 		if (wParam == IDM_DUPSESS) {
-#ifdef PERSOPORT
-		char bufpass[256];
-		strcpy(bufpass,conf_get_str(conf,CONF_password));
-		MASKPASS(bufpass);
-		conf_set_str(conf,CONF_password,bufpass);
-#endif
 		    /*
 		     * Allocate a file-mapping memory chunk for the
 		     * config structure.
@@ -3044,11 +3145,6 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		    inherit_handles = TRUE;
 		    sprintf(c, "putty &%p:%u", filemap, (unsigned)size);
 		    cl = c;
-#ifdef PERSOPORT
-		strcpy(bufpass,conf_get_str(conf,CONF_password));
-		MASKPASS(bufpass);
-		conf_set_str(conf,CONF_password,bufpass);
-#endif
 		} else if (wParam == IDM_SAVEDSESS) {
 		    unsigned int sessno = ((lParam - IDM_SAVED_MIN)
 					   / MENU_SAVED_STEP) + 1;
@@ -3115,7 +3211,6 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		Conf *prev_conf;
 		int init_lvl = 1;
 		int reconfig_result;
-
 		if (reconfiguring)
 		    break;
 		else
@@ -3185,6 +3280,10 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		    /* Gracefully unzoom if necessary */
 		    if (IsZoomed(hwnd) && (resize_action == RESIZE_DISABLED))
 			ShowWindow(hwnd, SW_RESTORE);
+#ifdef TUTTYPORT
+		    HMENU m = GetSystemMenu (hwnd, FALSE);
+		    EnableMenuItem(m, SC_CLOSE, conf_get_int(conf,CONF_window_closable) ? MF_ENABLED : MF_GRAYED);
+#endif
 		}
 		/* Pass new config data to the logging module */
 		log_reconfig(logctx, conf);
@@ -3215,11 +3314,15 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		 * HACK: PuttyTray / Nutty
 		 * Reconfigure
 		 */
-		if (conf_get_int(conf, CONF_url_defregex) == 0) {
-			urlhack_set_regular_expression(URLHACK_REGEX_CUSTOM,conf_get_str(conf, CONF_url_regex));
+		if( !PuttyFlag && HyperlinkFlag ) {
+			if( conf_get_int(conf, CONF_url_defregex) != 0 ) {
+				urlhack_set_regular_expression(URLHACK_REGEX_CLASSIC, conf_get_str(term->conf,CONF_url_regex) ) ;
+			} else {
+				urlhack_set_regular_expression(URLHACK_REGEX_CUSTOM, conf_get_str(term->conf, CONF_url_regex) ) ;
 			}
-		term->url_update = TRUE;
-		term_update(term);
+			term->url_update = TRUE;
+			term_update(term);
+		}
 #endif
 		/* Screen size changed ? */
 		if (conf_get_int(conf, CONF_height) !=
@@ -3273,7 +3376,19 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		    else
 			nflg |= WS_THICKFRAME;
 
+#ifdef TUTTYPORT
+		    if (!conf_get_int(conf,CONF_window_has_sysmenu))
+			nflg &= ~WS_SYSMENU;
+		    else
+			nflg |= WS_SYSMENU;
+		    if (!conf_get_int(conf,CONF_window_minimizable))
+			nflg &= ~WS_MINIMIZEBOX;
+		    else
+			nflg |= WS_MINIMIZEBOX;
+		    if (resize_action == RESIZE_DISABLED || !conf_get_int(conf,CONF_window_maximizable))
+#else		    
 		    if (resize_action == RESIZE_DISABLED)
+#endif
 			nflg &= ~WS_MAXIMIZEBOX;
 		    else
 			nflg |= WS_MAXIMIZEBOX;
@@ -3334,7 +3449,8 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		reset_window(init_lvl);
 		net_pending_errors();
 #ifdef PERSOPORT
-		SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)/*cfg.iconefile*/->path, conf_get_int(conf,CONF_icone)/*cfg.icone*/, SI_INIT ) ;
+		if( GetIconeFlag() != -1 )
+			SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)->path, conf_get_int(conf,CONF_icone), SI_INIT ) ;
 #endif
 		conf_free(prev_conf);
 	    }
@@ -3344,7 +3460,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	    break;
 	  case IDM_PASTE:
 #ifdef PERSOPORT
-	    if( !ProtectFlag ) 
+	    if( !GetProtectFlag() ) 
 #endif
 	    request_paste(NULL);
 	    break;
@@ -3374,35 +3490,34 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	  	ManageVisible( hwnd ) ;
 		break ;
           case IDM_TOTRAY: 
-		if( VisibleFlag==VISIBLE_YES ) {
-			VisibleFlag = VISIBLE_TRAY ;
+		if( GetVisibleFlag()==VISIBLE_YES ) {
+			SetVisibleFlag( VISIBLE_TRAY ) ;
 			return ManageToTray( hwnd ) ;
 			}
 		break ;
 	  case IDM_FROMTRAY:{
-//char b[256];sprintf(b,"%d",VisibleFlag);MessageBox(hwnd,b,"Info",MB_OK);
-		if( VisibleFlag==VISIBLE_TRAY ) {
-			VisibleFlag = VISIBLE_YES ;
+		if( GetVisibleFlag()==VISIBLE_TRAY ) {
+			SetVisibleFlag( VISIBLE_YES ) ;
 			return SendMessage( hwnd, MYWM_NOTIFYICON, 0, WM_LBUTTONDBLCLK ) ;
 			}
 		}
 		break ;
 #ifdef LAUNCHERPORT
 	  case IDM_HIDE:
-		if( VisibleFlag==VISIBLE_YES ) {
+		if( GetVisibleFlag()==VISIBLE_YES ) {
 			/*if (IsWindowVisible(hwnd) )*/ ShowWindow(hwnd, SW_HIDE) ;
-			VisibleFlag = VISIBLE_NO ;
+			SetVisibleFlag( VISIBLE_NO ) ;
 			}
 		break ;
 	  case IDM_UNHIDE:
-		if( VisibleFlag==VISIBLE_NO ) {
+		if( GetVisibleFlag()==VISIBLE_NO ) {
 			ShowWindow(hwnd, SW_RESTORE ) ;
-			VisibleFlag = VISIBLE_YES ;
+			SetVisibleFlag( VISIBLE_YES ) ;
 			}
 		break ;
 	  case IDM_SWITCH_HIDE:
-		if( VisibleFlag==VISIBLE_YES ) SendMessage( hwnd, WM_COMMAND, IDM_HIDE, 0 ) ;
-		else if( VisibleFlag==VISIBLE_NO ) SendMessage( hwnd, WM_COMMAND, IDM_UNHIDE, 0 ) ;
+		if( GetVisibleFlag()==VISIBLE_YES ) SendMessage( hwnd, WM_COMMAND, IDM_HIDE, 0 ) ;
+		else if( GetVisibleFlag()==VISIBLE_NO ) SendMessage( hwnd, WM_COMMAND, IDM_UNHIDE, 0 ) ;
 		break ;
 	  case IDM_GONEXT:
 		GoNext( hwnd ) ;
@@ -3417,6 +3532,9 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		break ;
 	  case IDM_SCRIPTFILE :
 		OpenAndSendScriptFile( hwnd ) ;
+		break ;
+	  case IDM_EXPORTSETTINGS :
+		SaveCurrentSetting( hwnd ) ;
 		break ;
 	  case IDM_PSCP:
 		SendFile( hwnd ) ;
@@ -3433,14 +3551,14 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		break ;
 #ifndef NO_TRANSPARENCY
 	  case IDM_TRANSPARUP: // Augmenter l'opacite (diminuer la transparence)
-		if( TransparencyFlag && conf_get_int(conf,CONF_transparencynumber) > 0 ) {
+		if( GetTransparencyFlag() && conf_get_int(conf,CONF_transparencynumber) > 0 ) {
 			conf_set_int( conf, CONF_transparencynumber, conf_get_int(conf,CONF_transparencynumber)-10 ) ;
 			if( conf_get_int(conf,CONF_transparencynumber)<0) conf_set_int( conf, CONF_transparencynumber, 0 );
 			SetTransparency( hwnd, 255-conf_get_int(conf,CONF_transparencynumber) ) ;
 			}
 		break ;
 	  case IDM_TRANSPARDOWN: // Diminuer l'opacite (augmenter la transparence)
-		if( TransparencyFlag && (conf_get_int(conf,CONF_transparencynumber)!=-1) && (conf_get_int(conf,CONF_transparencynumber)<255) ) {
+		if( GetTransparencyFlag() && (conf_get_int(conf,CONF_transparencynumber)!=-1) && (conf_get_int(conf,CONF_transparencynumber)<255) ) {
 			if( conf_get_int(conf,CONF_transparencynumber)==245 ) MessageBox( hwnd, "      KiTTY made by      \r\nCyril Dupont\r\nLeonard Nero", "About", MB_OK ) ;
 			conf_set_int( conf, CONF_transparencynumber, conf_get_int(conf,CONF_transparencynumber)+10 ) ;
 			if( conf_get_int(conf,CONF_transparencynumber)>255) conf_set_int( conf, CONF_transparencynumber, 255 ) ;
@@ -3499,13 +3617,13 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	    break;
 #ifdef ZMODEMPORT
 	case IDM_XYZSTART:
-		if( ZModemFlag ) {
+		if( GetZModemFlag() ) {
 		xyz_ReceiveInit(term);
 		xyz_updateMenuItems(term);
 		}
 		break;
 	case IDM_XYZUPLOAD:
-		if( ZModemFlag ) {
+		if( GetZModemFlag() ) {
 		xyz_StartSending(term);
 		xyz_updateMenuItems(term);
 		}
@@ -3550,7 +3668,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	case MYWM_NOTIFYICON :
 		switch (lParam)	{
 			case WM_LBUTTONDBLCLK : 
-				VisibleFlag = VISIBLE_YES ;
+				SetVisibleFlag( VISIBLE_YES ) ;
 				//ShowWindow(hwnd, SW_SHOWNORMAL);
 				ShowWindow(hwnd, SW_RESTORE);
 				SetForegroundWindow( hwnd ) ;
@@ -3588,7 +3706,8 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
       case WM_MBUTTONUP:
       case WM_RBUTTONUP:
 #ifdef PERSOPORT
-        if(!PuttyFlag && MouseShortcutsFlag) {
+	if( GetProtectFlag() ) { break ; }
+        if(!PuttyFlag && GetMouseShortcutsFlag() ) {
 	if((message == WM_LBUTTONUP) && ((wParam & MK_SHIFT)&&(wParam & MK_CONTROL) ) ) { // shift + CTRL + bouton gauche => duplicate session
 		if( back ) SendMessage( hwnd, WM_COMMAND, IDM_DUPSESS, 0 ) ;
 		else SendMessage( hwnd, WM_COMMAND, IDM_RESTART, 0 ) ;
@@ -3596,7 +3715,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		}
 
 	else if (message == WM_LBUTTONUP && ((wParam & MK_CONTROL) ) ) {// ctrl+bouton gauche => nouvelle icone
-		SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)/*cfg.iconefile*/->path, conf_get_int(conf,CONF_icone)/*cfg.icone*/, SI_NEXT ) ;
+		if( GetIconeFlag() != -1 ) SetNewIcon( hwnd, conf_get_filename(conf,CONF_iconefile)->path, conf_get_int(conf,CONF_icone), SI_NEXT ) ;
 		RefreshBackground( hwnd ) ;
 		//break ;
 		}
@@ -3606,7 +3725,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		break ;
 		}
 
-	else if ( PasteCommandFlag && (message == WM_RBUTTONDOWN) && ((wParam & MK_SHIFT) ) ) {// shift+bouton droit => coller (paste) ameliore (pour serveur lent, on utilise la methode autocommand par TIMER)
+	else if ( GetPasteCommandFlag() && (message == WM_RBUTTONDOWN) && ((wParam & MK_SHIFT) ) ) {// shift+bouton droit => coller (paste) ameliore (pour serveur lent, on utilise la methode autocommand par TIMER)
 		SetPasteCommand() ;
 		break ;
 		}
@@ -3641,7 +3760,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		break;
 	      case WM_RBUTTONDOWN:
 #ifdef PERSOPORT
-		if( !ProtectFlag ) { button = MBT_RIGHT ; wParam |= MK_RBUTTON ; press = 1 ; }
+		if( !GetProtectFlag() ) { button = MBT_RIGHT ; wParam |= MK_RBUTTON ; press = 1 ; }
 #else
 		button = MBT_RIGHT;
 		wParam |= MK_RBUTTON;
@@ -3660,7 +3779,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		break;
 	      case WM_RBUTTONUP:
 #ifdef PERSOPORT
-		if( !ProtectFlag ) { button = MBT_RIGHT ; wParam &= ~MK_RBUTTON ; press = 0 ; }
+		if( !GetProtectFlag() ) { button = MBT_RIGHT ; wParam &= ~MK_RBUTTON ; press = 0 ; }
 #else
 		button = MBT_RIGHT;
 		wParam &= ~MK_RBUTTON;
@@ -3762,13 +3881,13 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 		if ((!conf_get_int(term->conf, CONF_url_ctrl_click) || urlhack_is_ctrl_pressed()) &&
 			urlhack_is_in_link_region(urlhack_mouse_old_x, urlhack_mouse_old_y)) {
 				if (urlhack_cursor_is_hand == 0) {
-					SetClassLong(hwnd, GCL_HCURSOR, LoadCursor(NULL, IDC_HAND));
+					SetClassLong(hwnd, GCL_HCURSOR, (LONG)LoadCursor(NULL, IDC_HAND));
 					urlhack_cursor_is_hand = 1;
 					term_update(term); // Force the terminal to update, otherwise the underline will not show (bug somewhere, this is an ugly fix)
 				}
 		}
 		else if (urlhack_cursor_is_hand == 1) {
-			SetClassLong(hwnd, GCL_HCURSOR, LoadCursor(NULL, IDC_IBEAM));
+			SetClassLong(hwnd, GCL_HCURSOR, (LONG)LoadCursor(NULL, IDC_IBEAM));
 			urlhack_cursor_is_hand = 0;
 			term_update(term); // Force the terminal to update, see above
 		}
@@ -3784,7 +3903,6 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	/* HACK: PuttyTray / Nutty : END */
 	}
 #endif
-
 	if (wParam & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON) &&
 	    GetCapture() == hwnd) {
 	    Mouse_Button b;
@@ -4009,7 +4127,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	return 0;
       case WM_SETFOCUS:
 #ifdef PERSOPORT
-        if( TransparencyFlag && conf_get_int(conf,CONF_transparencynumber) >= 0 ) 
+        if( GetTransparencyFlag() && conf_get_int(conf,CONF_transparencynumber) >= 0 ) 
 		{ SetTransparency( hwnd, 255-conf_get_int(conf,CONF_transparencynumber) ) ; }
 	RefreshBackground( hwnd ) ;
 #endif
@@ -4235,7 +4353,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 			SendMessage( hwnd, WM_COMMAND, IDM_TOTRAY, 0 ) ; return 0 ;
 			}
 		else 
-			SetWindowText(hwnd, conf_get_int(conf,CONF_win_name_always)/*cfg.win_name_always*/ ? window_name : icon_name);
+			SetWindowText(hwnd, conf_get_int(conf,CONF_win_name_always) ? window_name : icon_name);
 		}
 #else
 
@@ -4339,7 +4457,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 
                 if (resizing) {
 #ifdef PERSOPORT
-		WinHeight = -1 ;
+		SetWinHeight( -1 ) ;
 #endif
                     /*
                      * Don't call back->size in mid-resize. (To
@@ -4358,8 +4476,8 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 	    }
 	}
 #ifdef PERSOPORT
-	//if( TitleBarFlag ) set_title( NULL, conf_get_str(conf,CONF_wintitle)/*cfg.wintitle*/ ) ;		// Pourquoi j'avais mis ca ??? je ne sais plus !!!
-	if( conf_get_int(conf,CONF_saveonexit)/*cfg.saveonexit*/ ) GetWindowCoord( hwnd ) ;
+	if( GetTitleBarFlag() ) set_title( NULL, conf_get_str(conf,CONF_wintitle) ) ;		// Pour refaire la barre de titre si option SizeFlag
+	if( conf_get_int(conf,CONF_saveonexit) ) GetWindowCoord( hwnd ) ;
 #endif
 #if (defined IMAGEPORT) && (!defined FDJ)
 	if( BackgroundImageFlag && (conf_get_int(conf,CONF_bg_image_abs_fixed)/*cfg.bg_image_abs_fixed*/==1) && (conf_get_int(conf,CONF_bg_type)/*cfg.bg_type*/!=0) ) RefreshBackground( hwnd ) ;
@@ -4486,9 +4604,9 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 #endif
 
 		if((wParam==VK_TAB)&&(message==WM_KEYDOWN)&&(GetKeyState(VK_CONTROL)&0x8000)&&(GetKeyState(VK_SHIFT)&0x8000)) 
-			{ ShortcutsFlag=abs(ShortcutsFlag-1) ; return 0 ; }
+			{ SetShortcutsFlag( abs(GetShortcutsFlag()-1) ) ; return 0 ; }
       
-		if( ShortcutsFlag ) { if ( (message==WM_KEYDOWN)||(message==WM_SYSKEYDOWN) ) {
+		if( GetShortcutsFlag() ) { if ( (message==WM_KEYDOWN)||(message==WM_SYSKEYDOWN) ) {
 		
 		if( ManageShortcuts( hwnd, wParam
 			, GetKeyState(VK_SHIFT)&0x8000
@@ -4499,11 +4617,11 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 			, (GetKeyState(VK_RWIN)&0x8000)||(GetKeyState(VK_LWIN)&0x8000)
 			) )  
 			return 0 ;
-		} } // fin if( ShortcutsFlag )
-		else { if( ProtectFlag == 1 ) return 0 ; }
+		} } // fin if( GetShortcutsFlag() )
+		else { if( GetProtectFlag() == 1 ) return 0 ; }
 
 		// Majuscule uniquement
-		if( CapsLockFlag ) {
+		if( GetCapsLockFlag() ) {
 			if( ( wParam>='A' ) && ( wParam <= 'Z' ) 
 					    && !(GetKeyState( VK_CAPITAL ) & 0x0001) 
 					    && !(GetKeyState( VK_SHIFT ) & 0x8000) ) { 
@@ -4699,7 +4817,7 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 				if(session_closed && !back) {
 					time_t tnow = time(NULL);
 					
-					if(last_reconnect && (tnow - last_reconnect) < 5) {
+					if(last_reconnect && (tnow - last_reconnect) < GetReconnectDelay() ) {
 						Sleep(1000);
 					}
 					last_reconnect = tnow;
@@ -4766,10 +4884,13 @@ else if((UINT_PTR)wParam == TIMER_LOGROTATION) {  // log rotation
 				   TO_CHR_X(p.x),
 				   TO_CHR_Y(p.y), shift_pressed,
 				   control_pressed, is_alt_pressed());
+#ifndef PUTTYXPORT
+// HACK (@unphased: I am removing the "button release" when triggered by mouse wheel to better replicate iTerm2's behavior)
 			term_mouse(term, b, translate_button(b),
 				   MA_RELEASE, TO_CHR_X(p.x),
 				   TO_CHR_Y(p.y), shift_pressed,
 				   control_pressed, is_alt_pressed());
+#endif
 		    } /* else: not sure when this can fail */
 		} else {
 		    /* trigger a scroll */
@@ -4893,6 +5014,13 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 	attr |= (260 << ATTR_FGSHIFT) | (261 << ATTR_BGSHIFT);
         is_cursor = TRUE;
     }
+    
+#ifdef TUTTYPORT
+    if (!conf_get_int(conf,CONF_sel_colour) && (attr & ATTR_SELECTED)) {
+	attr &= ~ATTR_SELECTED;
+	attr |= ATTR_REVERSE;
+    };
+#endif
 
     nfont = 0;
     if (vtmode == VT_POORMAN && lattr != LATTR_NORM) {
@@ -4981,6 +5109,55 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 	if (nbg < 16) nbg |= 8;
 	else if (nbg >= 256) nbg |= 1;
     }
+#ifdef TUTTYPORT
+    /*
+     * quick & dirty hack: underlined text has colour preference over bold & normal
+     * another one: selected text have absolute preference over all other attributes
+     */
+    if (attr & ATTR_SELECTED) {
+	nfg = 272;
+	nbg = 273;
+    } else {
+	if (conf_get_int(conf,CONF_under_colour) && (nfont & FONT_UNDERLINE)) {
+	    if (nfg < 7)
+		nfg += 264;
+	    else if (nfg > 7 && nfg < 16)
+		nfg += 256;
+	    else
+		switch (nfg) {
+		case 256:
+		    nfg = 262;
+		    break;
+		case 257:
+		    nfg = 262;
+		    break;
+		case 258:
+		    nfg = 263;
+		    break;
+		case 259:
+		    nfg = 263;
+		};
+	    if (nbg < 7)
+		nbg += 264;
+	    else if (nbg > 7 && nbg < 16)
+		nbg += 256;
+	    else
+		switch (nbg) {
+		case 256:
+		    nbg = 262;
+		    break;
+		case 257:
+		    nbg = 262;
+		    break;
+		case 258:
+		    nbg = 263;
+		    break;
+		case 259:
+		    nbg = 263;
+		};
+	};
+    };
+#endif
     fg = colours[nfg];
     bg = colours[nbg];
 #if (defined IMAGEPORT) && (!defined FDJ)
@@ -6487,19 +6664,19 @@ void set_title(void *frontend, char *title) {
 		if( ManageLocalCmd( MainHwnd, title+2 ) ) return ;
 		}
 	
-	if( !TitleBarFlag ) { set_title_internal( frontend, title ) ; return ; }
+	if( !GetTitleBarFlag() ) { set_title_internal( frontend, title ) ; return ; }
 		
 	if( strstr(title, " (PROTECTED)")==(title+strlen(title)-12) ) 
 		{ title[strlen(title)-12]='\0' ; }
 
 #if (defined IMAGEPORT) && (!defined FDJ)
 	buffer = (char*) malloc( strlen( title ) + strlen( conf_get_str(conf,CONF_host)/*cfg.host*/ ) + strlen( conf_get_filename(conf,CONF_bg_image_filename)/*cfg.bg_image_filename.*/->path ) + 40 ) ; 
-	if( BackgroundImageFlag && ImageViewerFlag && (!PuttyFlag) ) {sprintf( buffer, "%s", conf_get_filename(conf,CONF_bg_image_filename)/*cfg.bg_image_filename.*/->path ) ; }
+	if( BackgroundImageFlag && GetImageViewerFlag() && (!PuttyFlag) ) {sprintf( buffer, "%s", conf_get_filename(conf,CONF_bg_image_filename)/*cfg.bg_image_filename.*/->path ) ; }
 	else 
 #else
 	buffer = (char*) malloc( strlen( title ) + strlen( conf_get_str(conf,CONF_host)/*cfg.host*/ ) + 40 ) ; 
 #endif
-	if( (SizeFlag) && (!IsZoomed( MainHwnd )) ) {
+	if( GetSizeFlag() && (!IsZoomed( MainHwnd )) ) {
 		if( strlen( title ) > 0 ) {
 			if( title[strlen(title)-1] == ']' ) make_title( buffer, "%s", title ) ;
 			else { 
@@ -6514,7 +6691,7 @@ void set_title(void *frontend, char *title) {
 		else sprintf( buffer, "%s - %s", conf_get_str(conf,CONF_host)/*cfg.host*/, appname ) ;
 		}
 	
-	if( ProtectFlag ) if( strstr(buffer, " (PROTECTED)")==NULL ) strcat( buffer, " (PROTECTED)" ) ;
+	if( GetProtectFlag() ) if( strstr(buffer, " (PROTECTED)")==NULL ) strcat( buffer, " (PROTECTED)" ) ;
 	set_title_internal( frontend, buffer ) ;
 	
 	free(buffer);
@@ -7390,7 +7567,7 @@ void do_beep(void *frontend, int mode)
     /* Otherwise, either visual bell or disabled; do nothing here */
     if (!term->has_focus) {
 #ifdef PERSOPORT
-	if( VisibleFlag!=VISIBLE_TRAY ) {
+	if( GetVisibleFlag()!=VISIBLE_TRAY ) {
 		if(conf_get_int(conf,CONF_foreground_on_bell)/*cfg.foreground_on_bell*/ ) {					// Tester avec   sleep 4 ; echo -e '\a'
 			if( IsIconic(hwnd) ) SwitchToThisWindow( hwnd, TRUE ) ; 
 			else SetForegroundWindow( MainHwnd ) ;
@@ -7403,8 +7580,9 @@ void do_beep(void *frontend, int mode)
 				else 
 					flash_window(2) ; 
 				}
+			else { if( conf_get_int(conf,CONF_beep_ind)==B_IND_FLASH ) flash_window(2) ; }
 			}
-	} else if( VisibleFlag==VISIBLE_TRAY ) {
+	} else if( GetVisibleFlag()==VISIBLE_TRAY ) {
 		if( conf_get_int(conf,CONF_foreground_on_bell)/*cfg.foreground_on_bell*/ ) { SendMessage( MainHwnd, WM_COMMAND, IDM_FROMTRAY, 0 ); }
 		else if(mode == BELL_VISUAL) SetTimer(hwnd, TIMER_BLINKTRAYICON, (int)500, NULL) ;
 		//SendMessage( MainHwnd, WM_COMMAND, IDM_FROMTRAY, 0 );

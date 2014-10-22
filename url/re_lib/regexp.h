@@ -20,3 +20,5 @@ int regexec( regexp* r, char* str);
 void regsub( regexp* r, char* str, char* substr);
 void regerror( char* s);	/* for internal use only */
 void set_regerror_func( void (*func)( char*));
+
+void regfree( regexp* r) ;

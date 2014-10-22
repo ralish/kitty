@@ -30,6 +30,7 @@
 
 #ifdef PERSOPORT
 void SetAutoStoreSSHKey( void ) ;
+void load_open_settings_forced(char *filename, Conf *conf) ;
 #endif
 
 #define NPRIORITIES 2
@@ -214,6 +215,15 @@ int cmdline_process_param(char *p, char *value, int need_save, Conf *conf)
 	conf_set_int(conf, CONF_protocol, default_protocol);
     }
 #ifdef PERSOPORT
+    if (!strcmp(p, "-kload")) {
+	RETURN(2);
+	/* This parameter must be processed immediately rather than being
+	 * saved. */
+	load_open_settings_forced( value, conf ) ;
+	loaded_session = TRUE;
+	cmdline_session_name = dupstr(value);
+	return 2;
+    }
     if (!strcmp(p, "-auto_store_sshkey")) {
 	RETURN(1);
 	SetAutoStoreSSHKey();

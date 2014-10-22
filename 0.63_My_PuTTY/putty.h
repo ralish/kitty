@@ -109,6 +109,9 @@ int switch_private_key_flag( void ) ;
 
 #define ATTR_NARROW  0x800000U
 #define ATTR_WIDE    0x400000U
+#ifdef TUTTYPORT
+#define ATTR_SELECTED 0x02000000U
+#endif
 #define ATTR_BOLD    0x040000U
 #define ATTR_UNDER   0x080000U
 #define ATTR_REVERSE 0x100000U
@@ -149,6 +152,7 @@ int switch_private_key_flag( void ) ;
  */
 #define CHAR_MASK    0x000000FFUL
 extern const char* urlhack_default_regex ;
+extern const char* urlhack_liberal_regex ;
 enum {
 	URLHACK_UNDERLINE_ALWAYS,
 	URLHACK_UNDERLINE_HOVER,
@@ -357,6 +361,12 @@ enum {
     FUNKY_VT400,
     FUNKY_VT100P,
     FUNKY_SCO
+#ifdef TUTTYPORT
+    ,
+    FUNKY_ATT513,
+    FUNKY_ATT4410,
+    FUNKY_SUNXTERM
+#endif
 };
 
 enum {
@@ -940,12 +950,14 @@ void cleanup_exit(int);
 	X(STR, NONE, logtimestamp) \
 	X(INT, NONE, logtimerotation) \
 	X(FILENAME, NONE, scriptfile) \
+	X(STR, NONE, scriptfilecontent) \
 	X(INT, NONE, save_windowpos) \
 	X(INT, NONE, xpos) \
 	X(INT, NONE, ypos) \
 	X(INT, NONE, windowstate) \
 	X(INT, NONE, foreground_on_bell) \
         X(INT, NONE, ctrl_tab_switch) /* switch PuTTY windows with CtrlTab */ \
+	X(STR, NONE, comment) \
 /* #endif */ \
 /* #ifdef IVPORT */ \
     /* Background */ \
@@ -1001,6 +1013,16 @@ void cleanup_exit(int);
     X(FILENAME, NONE, url_browser) \
     X(STR, NONE, url_regex) \
 /* #endif */ \
+/* #ifdef TUTTYPORT */ \
+    X(INT, NONE, window_closable) \
+    X(INT, NONE, window_minimizable) \
+    X(INT, NONE, window_maximizable) \
+    X(INT, NONE, window_has_sysmenu) \
+    X(INT, NONE, bottom_buttons) \
+    X(INT, NONE, bold_colour) \
+    X(INT, NONE, under_colour) \
+    X(INT, NONE, sel_colour) \
+/* #endif */ \
 /* #ifdef ZMODEMPORT */ \
     /* Z modem options */ \
     X(FILENAME, NONE, rzcommand) \
@@ -1009,6 +1031,10 @@ void cleanup_exit(int);
     X(STR, NONE, szoptions) \
     X(STR, NONE, zdownloaddir) \
 /* #endif */ \
+/* #ifdef PORTKNOCKINGPORT */ \
+    /* port knocking options */ \
+    X(STR, NONE, portknockingoptions) \
+/* #endif */ \
 
 
 /* Now define the actual enum of option keywords using that macro. */
@@ -1016,7 +1042,11 @@ void cleanup_exit(int);
 enum config_primary_key { CONFIG_OPTIONS(CONF_ENUM_DEF) N_CONFIG_OPTIONS };
 #undef CONF_ENUM_DEF
 
+#ifdef PERSOPORT
+#define NCFGCOLOURS 34
+#else
 #define NCFGCOLOURS 22 /* number of colours in CONF_colours above */
+#endif
 
 /* Functions handling configuration structures. */
 Conf *conf_new(void);		       /* create an empty configuration */

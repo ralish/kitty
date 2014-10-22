@@ -45,6 +45,9 @@ BOOL RegCleanPuTTY( void ) ;
 // Creation du SSH Handler
 void CreateSSHHandler() ;
 
+// Creation de l'association de fichiers *.ktx
+void CreateFileAssoc() ;
+
 // Vérifie l'existance de la clé de KiTTY sinon la copie depuis PuTTY
 void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) ;
 

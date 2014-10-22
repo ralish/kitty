@@ -12,7 +12,7 @@
 #include "ssh.h"
 
 #ifdef PERSOPORT
-int get_param( const char * val ) ;
+#include "kitty_commun.h"
 #endif
 
 int console_batch_mode = FALSE;
@@ -119,7 +119,7 @@ int verify_ssh_host_key(void *frontend, char *host, int port, char *keytype,
 	return 1;
     
 #ifdef PERSOPORT
-	if( get_param("AUTOSTORESSHKEY") ) { strcpy(line,"y") ; }
+	if( GetAutoStoreSSHKeyFlag() ) { strcpy(line,"y") ; }
 	else {
 #endif
     if (ret == 2) {		       /* key was different */

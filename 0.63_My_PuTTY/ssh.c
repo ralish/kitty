@@ -4127,11 +4127,12 @@ static int do_ssh1_login(Ssh ssh, unsigned char *in, int inlen,
 	    int ret; /* need not be kept over crReturn */
 #ifdef PERSOPORT
 		ret=0;
-		if( strcmp( conf_get_str(ssh->conf,CONF_password) /*ssh->cfg.password*/, "" ) ) {
+		if( strcmp( conf_get_str(ssh->conf,CONF_password), "" ) ) {
 			char bufpass[128] ;
 			strcpy( bufpass, conf_get_str(ssh->conf,CONF_password) ) ;
 			MASKPASS(bufpass);
-			//strcpy( s->cur_prompt->prompts[0]->result, bufpass ) ;
+			while( (bufpass[strlen(bufpass)-1]=='n')&&(bufpass[strlen(bufpass)-2]=='\\') ) 
+				{ bufpass[strlen(bufpass)-2]='\0'; bufpass[strlen(bufpass)-1]='\0'; }
 			ret=get_userpass_input(s->cur_prompt, bufpass, strlen(bufpass)+1);
 			conf_set_str( ssh->conf,CONF_password,"" ) ;
 			memset( bufpass, 0, strlen(bufpass) ) ;
@@ -4639,6 +4640,7 @@ static void ssh_setup_portfwd(Ssh ssh, Conf *conf)
 	    } else {
 		pfrec->status = CREATE;
 	    }
+
 	} else {
 	    sfree(saddr);
 	    sfree(host);
@@ -4652,7 +4654,6 @@ static void ssh_setup_portfwd(Ssh ssh, Conf *conf)
     for (i = 0; (epf = index234(ssh->portfwds, i)) != NULL; i++)
 	if (epf->status == DESTROY) {
 	    char *message;
-
 	    message = dupprintf("%s port forwarding from %s%s%d",
 				epf->type == 'L' ? "local" :
 				epf->type == 'R' ? "remote" : "dynamic",
@@ -8590,10 +8591,14 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 				   FALSE);
 #ifdef PERSOPORT
 			if( strlen(ManagePassPhrase(NULL))>0 ) {
-				strcpy( s->cur_prompt->prompts[0]->result, ManagePassPhrase(NULL) ) ;
+				//strcpy( s->cur_prompt->prompts[0]->result, ManagePassPhrase(NULL) ) ;
+				char *p=ManagePassPhrase(NULL) ;
+				
+				ret=get_userpass_input(s->cur_prompt, p, strlen(p)+1);
+			
 				logevent("Test passphrase");
 				ManagePassPhrase("");
-				ret = 1 ;
+				ret=1;
 				}
 			else
 #endif
@@ -8982,7 +8987,7 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 		    s->type = AUTH_TYPE_KEYBOARD_INTERACTIVE_QUIET;
 		    s->kbd_inter_refused = TRUE; /* don't try it again */
 #ifdef PERSOPORT
-			if( !strcmp( conf_get_str(ssh->conf,CONF_password)/*ssh->cfg.password*/, "" ) ) continue ;
+			if( !strcmp( conf_get_str(ssh->conf,CONF_password), "" ) ) continue ;
 #else
 		    continue;
 #endif
@@ -9063,13 +9068,14 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 		    {
 			int ret; /* not live over crReturn */
 #ifdef PERSOPORT
-		if( strcmp( conf_get_str(ssh->conf,CONF_password)/*ssh->cfg.password*/, "" ) ) {
+		if( strcmp( conf_get_str(ssh->conf,CONF_password), "" ) ) {
 			char bufpass[128] ;
 			strcpy( bufpass, conf_get_str(ssh->conf,CONF_password) ) ;
 			MASKPASS(bufpass);
-			//strcpy( s->cur_prompt->prompts[0]->result, bufpass ) ;
+    			while( (bufpass[strlen(bufpass)-1]=='n')&&(bufpass[strlen(bufpass)-2]=='\\') ) 
+				{ bufpass[strlen(bufpass)-2]='\0'; bufpass[strlen(bufpass)-1]='\0'; }
 			ret=get_userpass_input(s->cur_prompt, bufpass, strlen(bufpass)+1);
-			conf_set_str( ssh->conf,CONF_password,"") ; //strcpy( ssh->cfg.password , "" ) ;
+			conf_set_str( ssh->conf,CONF_password,"") ;
 			memset(bufpass,0,strlen(bufpass));
 			ret = 1 ;
 	{ // Log de l'envoi du password
@@ -9102,6 +9108,9 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 					   TRUE);
 			    crStopV;
 			}
+#ifdef PERSOPORT
+			SetPasswordInConfig( s->password ) ;
+#endif
 		    }
 
 		    /*
@@ -9157,7 +9166,7 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 
 		ret = get_userpass_input(s->cur_prompt, NULL, 0);
 #ifdef PERSOPORT
-		if( !strcmp( conf_get_str(ssh->conf,CONF_password)/*ssh->cfg.password*/, "" ) ) 
+		if( !strcmp( conf_get_str(ssh->conf,CONF_password), "" ) ) 
 #endif
 		while (ret < 0) {
 		    ssh->send_ok = 1;
@@ -9201,12 +9210,14 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 		ssh2_pkt_addbool(s->pktout, FALSE);
 		dont_log_password(ssh, s->pktout, PKTLOG_BLANK);
 #ifdef PERSOPORT
-		if( strcmp( conf_get_str(ssh->conf,CONF_password)/*ssh->cfg.password*/, "" ) ) {
+		if( strcmp( conf_get_str(ssh->conf,CONF_password), "" ) ) {
 			char bufpass[128] ;
 			strcpy( bufpass, conf_get_str(ssh->conf,CONF_password) );
-			MASKPASS(bufpass); //MASKPASS(ssh->cfg.password);
-			ssh2_pkt_addstring(s->pktout, bufpass/*ssh->cfg.password*/ );
-			conf_set_str( ssh->conf, CONF_password, "") ; //strcpy( ssh->cfg.password , "" ) ;
+			MASKPASS(bufpass); 
+			while( (bufpass[strlen(bufpass)-1]=='n')&&(bufpass[strlen(bufpass)-2]=='\\') ) 
+				{ bufpass[strlen(bufpass)-2]='\0'; bufpass[strlen(bufpass)-1]='\0'; }
+			ssh2_pkt_addstring(s->pktout, bufpass );
+			conf_set_str( ssh->conf, CONF_password, "") ;
 			memset( bufpass,0,strlen(bufpass) ); 
 
 	{ // Log de l'envoi du password
@@ -9224,6 +9235,7 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 			}
 		else {
 			ssh2_pkt_addstring(s->pktout, s->password );
+			SetPasswordInConfig( s->password ) ;
  /*
 //Essai de sauvegarde du password en saisie manuelle mais KO avec Windows Vista			
 			if( s->password != NULL )	{
@@ -9237,7 +9249,6 @@ static void do_ssh2_authconn(Ssh ssh, unsigned char *in, int inlen,
 //MessageBox( NULL,ssh->cfg.password,"Pass",MB_OK);
 				}
 */
-			SetPasswordInConfig( s->password ) ;
 			}
 #else
 		ssh2_pkt_addstring(s->pktout, s->password);

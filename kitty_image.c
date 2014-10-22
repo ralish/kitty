@@ -1,3 +1,7 @@
+// Probleme du bug de consommation memoire avec le shrink => 
+//	- voir 0/1 dans la fonction RedrawBackground
+//	- voir dans le fichier WINDOW.C le  if((UINT_PTR)wParam == TIMER_REDRAW)
+
 
 // Essai de compilation séparé
 #ifdef FDJ
@@ -351,7 +355,7 @@ static BOOL load_file_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
 }
 
 #include <setjmp.h>
-#include "jpeglib.h"
+#include "jpeg/jpeglib.h"
 jmp_buf JPEG_bailout;
 int usePalette = 0;
 char *loadError = NULL;	
@@ -573,6 +577,115 @@ if( rawImage == NULL ) res =FALSE ;
      fclose( fp ) ;
 
     return res;
+}
+
+HBITMAP HWND_to_HBITMAP(HWND hWnd)
+{
+  RECT    r;
+  HDC     hdcMem, hdcScr;
+  HBITMAP hbmMem, hbmOld;
+ 
+  GetWindowRect(hWnd, &r);
+  hdcScr = GetWindowDC(hWnd);
+  hdcMem = CreateCompatibleDC(hdcScr);
+  hbmMem = CreateCompatibleBitmap(hdcScr, r.right -= r.left, r.bottom -= r.top);
+  hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
+  BitBlt(hdcMem, 0, 0, r.right, r.bottom, hdcScr, 0, 0, SRCCOPY);
+  SelectObject(hdcMem, hbmOld);
+  ReleaseDC(hWnd, hdcScr);
+  DeleteDC(hdcMem);
+  return hbmMem;
+}
+ 
+BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
+{
+  BITMAP      bm;
+  BITMAPINFO  bi;
+  BYTE       *pPixels;
+  JSAMPROW    jrows[1], jrow;
+  HDC         hdcScr, hdcMem1, hdcMem2;
+  HBITMAP     hbmMem, hbmOld1, hbmOld2;
+  FILE       *fp = fopen(jpgfile, "wb");
+  struct jpeg_compress_struct jpeg;
+  struct jpeg_error_mgr       jerr;
+ 
+  if(!hbm)
+    return 0;
+  if(!GetObject(hbm, sizeof(bm), &bm))
+    return 0;
+  if(!fp)
+    return 0;
+ 
+  ZeroMemory(&bi, sizeof(bi));
+  bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+  bi.bmiHeader.biWidth       = bm.bmWidth;
+  bi.bmiHeader.biHeight      = bm.bmHeight;
+  bi.bmiHeader.biPlanes      = 1;
+  bi.bmiHeader.biBitCount    = 24;
+  bi.bmiHeader.biCompression = BI_RGB;
+ 
+  hdcScr  = GetDC(0);
+  hdcMem1 = CreateCompatibleDC(hdcScr);
+  hbmOld1 =  (HBITMAP)SelectObject(hdcMem1,hbm);
+  hdcMem2 = CreateCompatibleDC(hdcScr);
+  hbmMem  = CreateDIBSection(hdcScr, &bi, DIB_RGB_COLORS, (VOID **)&pPixels, 0, 0);
+  hbmOld2 = (HBITMAP)SelectObject(hdcMem2, hbmMem);
+ 
+  BitBlt(hdcMem2, 0, 0, bm.bmWidth, bm.bmHeight, hdcMem1, 0, 0, SRCCOPY);
+ 
+  SelectObject(hdcMem1, hbmOld1);
+  SelectObject(hdcMem2, hbmOld2);
+  ReleaseDC(0, hdcScr);
+  DeleteDC(hdcMem1);
+  DeleteDC(hdcMem2);
+ 
+  jpeg.err = jpeg_std_error(&jerr);
+  jpeg_create_compress(&jpeg);
+  jpeg_stdio_dest(&jpeg, fp);
+  jpeg.image_width      = bm.bmWidth;
+  jpeg.image_height     = bm.bmHeight;
+  jpeg.input_components = 3;
+  jpeg.in_color_space   = JCS_RGB;
+  jpeg.dct_method       = JDCT_FLOAT;
+  jpeg_set_defaults(&jpeg);
+  jpeg_set_quality(&jpeg, (quality < 0 || quality > 100) ? 100 : quality, TRUE);
+  jpeg_start_compress(&jpeg, TRUE);
+ 
+  char *comment=NULL ;
+  if( comment ) {
+	jpeg_write_marker(&jpeg, JPEG_COM, (const JOCTET*)comment, strlen(comment));
+  }
+
+  while(jpeg.next_scanline < jpeg.image_height)
+  {
+    unsigned int i, j, tmp;
+ 
+    jrow = &pPixels[(jpeg.image_height - jpeg.next_scanline - 1) * ((((bm.bmWidth * 24) + 31) / 32) * 4)];
+ 
+    for(i = 0; i < jpeg.image_width; i++)
+    {
+      j           = i * 3;
+      tmp         = jrow[j];
+      jrow[j]     = jrow[j + 2];
+      jrow[j + 2] = tmp;
+    }
+    jrows[0] = jrow;
+    jpeg_write_scanlines(&jpeg, jrows, 1);
+  }
+ 
+  jpeg_finish_compress(&jpeg);
+  jpeg_destroy_compress(&jpeg);
+  DeleteObject(hbmMem);
+  fclose(fp);
+  return 1;
+}
+
+void MakeScreenShot() {
+HBITMAP hbm = HWND_to_HBITMAP(GetDesktopWindow());
+   if(hbm) {
+    HBITMAP_to_JPG(hbm, "screenshot.jpg", 85);
+    DeleteObject(hbm);
+  }
 }
 
 static HBITMAP CreateDIBSectionWithFileMapping(HDC dc, int width, int height, HANDLE fmap)
@@ -1299,7 +1412,7 @@ void RedrawBackground( HWND hwnd ) {
 		(get_param("BACKGROUNDIMAGE"))&&(!get_param("PUTTY"))&&(conf_get_int(conf,CONF_bg_type)/*cfg.bg_type*/ != 0) ) 
 			{
 			clean_bg() ;
-			load_bg_bmp();
+			load_bg_bmp();   // Apparement c'est ça qui faisait la fuite memoire !!!
 			}
 	RedrawWindow(hwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
 	InvalidateRect(hwnd, NULL, TRUE) ;

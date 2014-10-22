@@ -33,6 +33,7 @@ static const char *const puttystr = PUTTY_REG_POS "\\Sessions";
 static const char hex[16] = "0123456789ABCDEF";
 
 #ifdef PERSOPORT
+#include "kitty_commun.h"
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif
@@ -44,6 +45,7 @@ static const char hex[16] = "0123456789ABCDEF";
 #endif
 
 int get_param( const char * val ) ;
+
 void DelDir( const char * directory ) ;
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
 void CleanFolderName( char * folder ) ;
@@ -56,6 +58,7 @@ static char seedpath[2 * MAX_PATH + 10] = "\0";
 static char sesspath[2 * MAX_PATH] = "\0";
 static char initialsesspath[2 * MAX_PATH] = "\0";
 static char sshkpath[2 * MAX_PATH] = "\0";
+static char jumplistpath[2 * MAX_PATH] = "\0";
 static char oldpath[2 * MAX_PATH] = "\0";
 static char sessionsuffix[16] = "\0";
 static char keysuffix[16] = "\0";
@@ -263,6 +266,8 @@ int loadPath() {
 		strcpy(initialsesspath,sesspath);
 		strcpy(sshkpath, GetConfigDirectory());
 		strcat(sshkpath, "\\SshHostKeys");
+		strcpy(jumplistpath, GetConfigDirectory());
+		strcat(jumplistpath, "\\Jumplist");
 		strcpy(seedpath, GetConfigDirectory());
 		strcat(seedpath, "\\putty.rnd");
 		}
@@ -272,6 +277,8 @@ int loadPath() {
 		strcpy(initialsesspath,sesspath);
 		strcpy(sshkpath, puttypath);
 		strcat(sshkpath, "\\SshHostKeys");
+		strcpy(jumplistpath, puttypath);
+		strcat(jumplistpath, "\\Jumplist");
 		strcpy(seedpath, puttypath);
 		strcat(seedpath, "\\putty.rnd");
 		}
@@ -319,6 +326,14 @@ int loadPath() {
 					*p = '\0';
 					joinPath(sshkpath, puttypath, p2);
 					p2 = sshkpath+strlen(sshkpath)-1;
+					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
+					*(p2+1) = '\0';
+				}
+				else if (!strcmp(p, "Jumplist")) {
+					p = strchr(p2, '\n');
+					*p = '\0';
+					joinPath(jumplistpath, puttypath, p2);
+					p2 = jumplistpath+strlen(jumplistpath)-1;
 					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
 					*(p2+1) = '\0';
 				}
@@ -397,6 +412,7 @@ void SaveDumpPortableConfig( FILE * fp ) {
 	fprintf( fp, "sesspath=%s\n", sesspath ) ;
 	fprintf( fp, "initialsesspath=%s\n", initialsesspath ) ;
 	fprintf( fp, "sshkpath=%s\n", sshkpath ) ;
+	fprintf( fp, "jumplistpath=%s\n", jumplistpath ) ;
 	fprintf( fp, "oldpath=%s\n", oldpath ) ;
 	fprintf( fp, "sessionsuffix=%s\n", sessionsuffix ) ;
 	fprintf( fp, "keysuffix=%s\n", keysuffix ) ;
@@ -1367,10 +1383,10 @@ int verify_host_key(const char *hostname, int port,
     regname = snewn(3 * (strlen(hostname) + strlen(keytype)) + 15, char);
 
     hostkey_regname(regname, hostname, port, keytype);
+    GetCurrentDirectory( (MAX_PATH*2), oldpath);
 
 	/* JK: settings on disk - every hostkey as file in dir */
 	if( get_param("INIFILE") == SAVEMODE_DIR ) {
-	GetCurrentDirectory( (MAX_PATH*2), oldpath);
 	if (SetCurrentDirectory(sshkpath)) {
 		
 		p = snewn(3 * strlen(regname) + 1 + 16, char);
@@ -1493,7 +1509,7 @@ int verify_host_key(const char *hostname, int port,
 	else if( get_param("INIFILE")==SAVEMODE_DIR ) { /* key matched OK in registry */
 		/* JK: matching key found in registry -> warn user, ask what to do */
 		p = snewn(256, char);
-		if( get_param("AUTOSTORESSHKEY") ) { userMB=IDYES ; }
+		if( GetAutoStoreSSHKeyFlag() ) { userMB=IDYES ; }
 		else
 		userMB = MessageBox(NULL, "Host key is cached but in registry. "
 			"Do you want to move it to file? \n\n"
@@ -1513,7 +1529,6 @@ int verify_host_key(const char *hostname, int port,
 			packstr(regname, p);
 			strcat(p, keysuffix);
 			
-			debug_logevent( "VerifySSHKey(oldpath,sshkpath,regname,p)=(%s,%s,%s,%s)",oldpath,sshkpath,regname,p ) ;
 			hFile = CreateFile(p, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 			
 			SetCurrentDirectory(oldpath);
@@ -1656,8 +1671,8 @@ void store_host_key(const char *hostname, int port,
     regname = snewn(3 * (strlen(hostname) + strlen(keytype)) + 15, char);
 
     hostkey_regname(regname, hostname, port, keytype);
-
 #ifdef PERSOPORT
+	GetCurrentDirectory( (MAX_PATH*2), oldpath);
 if( (get_param("INIFILE")==SAVEMODE_REG)||(get_param("INIFILE")==SAVEMODE_FILE) ) {
     if (RegCreateKey(HKEY_CURRENT_USER, PUTTY_REG_POS "\\SshHostKeys",
 		     &rkey) == ERROR_SUCCESS) {
@@ -1676,14 +1691,12 @@ else {
 		createPath(sshkpath);
 	}
 	FindClose(hFile);
-	GetCurrentDirectory( (MAX_PATH*2), oldpath);
 	SetCurrentDirectory(sshkpath);
 
 	p = snewn(3*strlen(regname) + 1, char);
 	packstr(regname, p);
 	strcat(p, keysuffix);
 	
-	debug_logevent( "WriteSSHKey(oldpath,sshkpath,regname,p)=(%s,%s,%s,%s)",oldpath,sshkpath,regname,p ) ;
 	hFile = CreateFile(p, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (hFile == INVALID_HANDLE_VALUE) {
@@ -1899,6 +1912,33 @@ static int transform_jumplist_registry
     char *old_value, *new_value;
     char *piterator_old, *piterator_new, *piterator_tmp;
 
+#ifdef PERSOPORT
+	char RecentSessionsFile[2*MAX_PATH] ;
+if( get_param("INIFILE")==SAVEMODE_DIR ) {
+	ret = ERROR_SUCCESS ;
+	if( !existdirectory(jumplistpath) ) { createPath(jumplistpath) ;}
+	sprintf(RecentSessionsFile,"%s/RecentSessions",jumplistpath);
+	if( !existfile(RecentSessionsFile) ) {
+		ret == ERROR_FILE_NOT_FOUND;
+		value_length=200 ;
+		old_value = snewn(value_length, char);
+		*old_value = '\0';
+		*(old_value + 1) = '\0';
+	} else {
+		FILE *fp ;
+		if( (fp = fopen( RecentSessionsFile, "r" )) != NULL ) {
+			value_length = filesize( RecentSessionsFile ) ;
+			old_value = snewn(value_length+2, char);
+			fread (old_value, value_length, 1, fp ) ;
+			old_value[value_length]='\0';
+			old_value[value_length+1]='\0';
+			fclose(fp) ;
+		} else { ret = JUMPLISTREG_ERROR_VALUEREAD_FAILURE ;  }
+	}
+}
+else {
+#endif
+	
     ret = RegCreateKeyEx(HKEY_CURRENT_USER, reg_jumplist_key, 0, NULL,
                          REG_OPTION_NON_VOLATILE, (KEY_READ | KEY_WRITE), NULL,
                          &pjumplist_key, NULL);
@@ -1943,6 +1983,9 @@ static int transform_jumplist_registry
         *old_value = '\0';
         *(old_value + 1) = '\0';
     }
+#ifdef PERSOPORT
+}
+#endif
 
     /* Check validity of registry data: REG_MULTI_SZ value must end
      * with \0\0. */
@@ -1991,6 +2034,15 @@ static int transform_jumplist_registry
         ++piterator_new;
 
         /* Save the new list to the registry. */
+#ifdef PERSOPORT
+if( get_param("INIFILE")==SAVEMODE_DIR ) {
+	FILE *fp ;
+	if( (fp = fopen( RecentSessionsFile, "w" )) != NULL ) {
+		fwrite ( new_value, piterator_new - new_value, 1, fp ) ;
+		fclose(fp) ;
+	}
+} else
+#endif
         ret = RegSetValueEx(pjumplist_key, reg_jumplist_value, 0, REG_MULTI_SZ,
                             new_value, piterator_new - new_value);
 
@@ -2008,6 +2060,9 @@ static int transform_jumplist_registry
         sfree(old_value);
 
     /* Clean up and return. */
+ #ifdef PERSOPORT
+if( !get_param("INIFILE")==SAVEMODE_DIR )
+#endif	   
     RegCloseKey(pjumplist_key);
 
     if (ret != ERROR_SUCCESS) {

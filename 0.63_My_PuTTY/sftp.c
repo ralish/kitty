@@ -471,7 +471,6 @@ int fxp_init(void)
     pktout = sftp_pkt_init(SSH_FXP_INIT);
     sftp_pkt_adduint32(pktout, SFTP_PROTO_VERSION);
     sftp_send(pktout);
-
     pktin = sftp_recv();
     if (!pktin) {
 	fxp_internal_error("could not connect");

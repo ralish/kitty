@@ -618,7 +618,7 @@ int do_eventsel_loop(HANDLE other_event)
     }
 
     sfree(handles);
-
+    
     if (n == WAIT_TIMEOUT) {
 	now = next;
     } else {
@@ -770,3 +770,9 @@ int main(int argc, char *argv[])
 
     return ret;
 }
+
+/*
+Probleme sftp ne mache plus
+coince à la ligne     n = WaitForMultipleObjects(nallhandles, handles, FALSE, ticks);
+	dans la fonction int do_eventsel_loop(HANDLE other_event)
+*/

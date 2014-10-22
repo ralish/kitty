@@ -10,7 +10,7 @@ int decryptstring( char * st, const char * key ) ;
 
 // Generation de la clé privée PuTTY
 int GenerePrivateKey( const char * filename ) ;
-	
+
 // Procedure de management de la passphrase
 char * ManagePassPhrase( const char * st ) ;
 

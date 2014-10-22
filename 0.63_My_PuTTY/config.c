@@ -18,7 +18,9 @@ void sc_conf_filesel_handler11(union control *ctrl, void *dlg, void *data, int e
 int cygterm_get_flag( void ) ;
 #endif
 #ifdef PERSOPORT
+#include "kitty.h"
 union control * ctrlHostnameEdit = NULL ;
+void MASKPASS( char * password ) ;
 #endif
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
@@ -149,6 +151,34 @@ void conf_filesel_handler(union control *ctrl, void *dlg,
         filename_free(filename);
     }
 }
+
+#ifdef PERSOPORT
+void ReadInitScript( const char * filename ) ;
+int existfile( const char * filename );
+union control * ctrlScriptFileContentEdit = NULL ;
+void conf_scriptfilesel_handler(union control *ctrl, void *dlg,
+			  void *data, int event)
+{
+    int key = ctrl->fileselect.context.i;
+    Conf *conf = (Conf *)data;
+
+    if (event == EVENT_REFRESH) {
+	dlg_filesel_set(ctrl, dlg, conf_get_filename(conf, key));
+    } else if (event == EVENT_VALCHANGE) {
+	Filename *filename = dlg_filesel_get(ctrl, dlg);
+	if( filename && existfile(filename->path) ) {
+		//conf_set_filename(conf, key, filename);
+		ReadInitScript(filename->path);
+		if( ctrlScriptFileContentEdit ) dlg_editbox_set(ctrlScriptFileContentEdit, dlg, conf_get_str(conf,CONF_scriptfilecontent));
+		 Filename * fn = filename_from_str( "" ) ;
+		conf_set_filename(conf,CONF_scriptfile,fn);
+		dlg_filesel_set(ctrl, dlg,  fn ) ;
+		filename_free(fn);
+		}
+        filename_free(filename);
+    }
+}
+#endif
 
 void conf_fontsel_handler(union control *ctrl, void *dlg,
 			  void *data, int event)
@@ -591,6 +621,7 @@ static void sshbug_handler(union control *ctrl, void *dlg,
 }
 
 #ifdef PERSOPORT
+#include "kitty.h"
 int dlg_listbox_get(union control *ctrl, void *dlg, int index, char * pstr, int maxcount) ;
 int dlg_listbox_gettext(union control *ctrl, void *dlg, int index, char * pstr, int maxcount) ;
 
@@ -601,23 +632,14 @@ void StringList_Up( char **list, const char * name ) ;
 
 void UpFolderInList( char * name ) ;
 
-char * SetSessPath( const char * dec ) ;
 void CreateFolderInPath( const char * d ) ;
-
 static void sessionsaver_handler(union control *ctrl, void *dlg, void *data, int event) ;
-void GetSessionFolderName( const char * session, char * folder ) ;
-void CleanFolderName( char * folder ) ;
-int GetSessionField( const char * session_in, const char * folder, const char * field, char * result ) ;
 char *stristr (const char *meule_de_foin, const char *aiguille) ;
 void RunPuTTY( HWND hwnd, char * param ) ;
 void RunConfig( Conf * conf /*Config *cfg*/ ) ;
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
 
-extern int ConfigBoxHeight ;
 extern char ** FolderList ;
-
-void InitFolderList( void ) ;
-void SaveFolderList( void ) ;
 
 static char CurrentFolder[1024]="Default" ;
 union control * ctrlSessionList = NULL ;
@@ -979,7 +1001,7 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 					}
 				else {
 					if( (!strcmp(CurrentFolder,folder))||(!strcmp("",folder)) ) {
-						if( !get_param("SESSIONFILTER") ) // filtre desactive
+						if( !GetSessionFilterFlag() ) // filtre desactive
 							dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
 						else if( (stristr(ssd->sesslist.sessions[i],ssd->savedsession)!=NULL) 
 							|| ( strstr(ssd->sesslist.sessions[i]," [")==ssd->sesslist.sessions[i] ) )
@@ -987,7 +1009,7 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 						}
 					}
 				}
-			else if( !get_param("SESSIONFILTER") ) // filtre desactive
+			else if( !GetSessionFilterFlag() ) // filtre desactive
 				dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
 			else 
 			if( (!strcmp( CurrentFolder, "Default" )) || (!strcmp(CurrentFolder,folder)) ) {
@@ -1028,7 +1050,7 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 					}
 				else {
 					if( (!strcmp(CurrentFolder,folder))||(!strcmp("",folder)) ) {
-						if( !get_param("SESSIONFILTER") ) // filtre desactive
+						if( !GetSessionFilterFlag() ) // filtre desactive
 							dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
 						else if( (stristr(ssd->sesslist.sessions[i],ssd->savedsession)!=NULL) 
 							|| ( strstr(ssd->sesslist.sessions[i]," [")==ssd->sesslist.sessions[i] ) )
@@ -1036,10 +1058,11 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 						}
 					}
 				}
-			else if( !get_param("SESSIONFILTER") ) // filtre desactive
+			else if( !GetSessionFilterFlag() ) // filtre desactive
 				dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
 			else {
-				if( (!strcmp( CurrentFolder, "Default" )) || (!strcmp(CurrentFolder,folder)) ) {
+				if( (!strcmp(CurrentFolder, "Default" )&&GetSessionsInDefaultFlag()) 
+				    || (!strcmp(CurrentFolder,folder)) ) {
 					if( (!strcmp( ssd->savedsession, "" )) 
 					|| ( strlen(ssd->savedsession)<=1 )
 					|| (stristr(host,ssd->savedsession)!=NULL)
@@ -1092,31 +1115,26 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 	     * double-click on the list box _and_ that session
 	     * contains a hostname.
 	     */
-	    if (load_selected_session(ssd, dlg, conf, &mbl) &&
+#ifdef PERSOPORT
+	     if (load_selected_session(ssd, dlg, conf, &mbl) &&
 		(mbl && ctrl == ssd->listbox && conf_launchable(conf))) {
-#if (defined IMAGEPORT) && (!defined FDJ) && (defined STARTBUTTON)
-		/*
-			if( (!get_param("PUTTY"))&&(strlen(savedsession)>0) ) {
-			RunSession( hwnd, CurrentFolder, savedsession ) ;	// On charge avec -load
-			//dlg_end(dlg, 0) ;
-			}
-		
-		else
-		
-		
-		if( (!get_param("PUTTY"))&&get_param("BACKGROUNDIMAGE")&&(strlen(savedsession)>0)&&(cfg->bg_type>0) )
-			BackgroundImagePatch( 1 ) ;
-		else
-			*/
-#endif
+		MASKPASS( conf_get_str( conf, CONF_password) );
 		dlg_end(dlg, 1);       /* it's all over, and succeeded */
 	    }
+	MASKPASS( conf_get_str( conf, CONF_password) );
+#else
+	     if (load_selected_session(ssd, dlg, conf, &mbl) &&
+		(mbl && ctrl == ssd->listbox && conf_launchable(conf))) {
+		dlg_end(dlg, 1);       /* it's all over, and succeeded */
+	    }
+#endif
+
 	} else if (ctrl == ssd->savebutton) {
 	    int isdef = !strcmp(ssd->savedsession, "Default Settings");
 #ifdef PERSOPORT
 	if( (get_param("INIFILE")==2/*SAVEMODE_DIR*/) && get_param("DIRECTORYBROWSE") ) {
 		if( !isdef ) { 
-			if( (strlen(conf_get_str(conf,CONF_sessionname)/*cfg->sessionname*/)>0) && (strlen(ssd->savedsession)==0) ) strcpy(ssd->savedsession,conf_get_str(conf,CONF_sessionname)/*cfg->sessionname*/); 
+			if( (strlen(conf_get_str(conf,CONF_sessionname))>0) && (strlen(ssd->savedsession)==0) ) strcpy(ssd->savedsession,conf_get_str(conf,CONF_sessionname)); 
 			}
 		}
 #endif
@@ -1133,9 +1151,13 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 	    }
             {
 #ifdef PERSOPORT
-		conf_set_str( conf, CONF_folder, CurrentFolder ) ; //strcpy( cfg->folder, CurrentFolder );
-#endif
+		conf_set_str( conf, CONF_folder, CurrentFolder ) ;
+		MASKPASS( conf_get_str( conf, CONF_password) );
+		char *errmsg = save_settings(ssd->savedsession, conf);
+		MASKPASS( conf_get_str( conf, CONF_password) );
+#else
                 char *errmsg = save_settings(ssd->savedsession, conf);
+#endif
                 if (errmsg) {
                     dlg_error_msg(dlg, errmsg);
                     sfree(errmsg);
@@ -1177,6 +1199,9 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 		dlg_end(dlg, 1);
                 return;
             }
+#ifdef PERSOPORT
+	MASKPASS( conf_get_str( conf, CONF_password) );
+#endif
 	    /*
 	     * Annoying special case. If the `Open' button is
 	     * pressed while no host name is currently set, _and_
@@ -1274,6 +1299,9 @@ static void sessionsaver_handler(union control *ctrl, void *dlg,
 	else if (!ssd->midsession && // creer un nouveau folder
 		   ssd->createbutton && ctrl == ssd->createbutton) {
 			if( strlen(ssd->savedsession) > 0 ) {
+				if( !stricmp(ssd->savedsession,"Default") ) {
+					MessageBox( NULL, "Your are not allowed to create a folder called Default !", "Error", MB_OK|MB_ICONERROR ) ;
+				} else
 				if( !get_param("DIRECTORYBROWSE") ) {
 					InitFolderList() ;
 					StringList_Add( FolderList, ssd->savedsession ) ;
@@ -1368,10 +1396,31 @@ static void charclass_handler(union control *ctrl, void *dlg,
 }
 
 struct colour_data {
+#ifdef TUTTYPORT
+	    union control *listbox, *redit, *gedit, *bedit, *button,
+	*bold_checkbox, *underline_checkbox, *selected_checkbox;
+#else
     union control *listbox, *redit, *gedit, *bedit, *button;
+#endif
 };
 
 static const char *const colours[] = {
+#ifdef TUTTYPORT
+    "Default Foreground", "Default Bold Foreground",
+    "Default Underlined Foreground",
+    "Default Background", "Default Bold Background",
+    "Default Underlined Background",
+    "Cursor Text", "Cursor Colour",
+    "Selected Text Foreground", "Selected Text Background",
+    "ANSI Black", "ANSI Black Bold", "ANSI Black Underlined",
+    "ANSI Red", "ANSI Red Bold", "ANSI Red Underlined",
+    "ANSI Green", "ANSI Green Bold", "ANSI Green Underlined",
+    "ANSI Yellow", "ANSI Yellow Bold", "ANSI Yellow Underlined",
+    "ANSI Blue", "ANSI Blue Bold", "ANSI Blue Underlined",
+    "ANSI Magenta", "ANSI Magenta Bold", "ANSI Magenta Underlined",
+    "ANSI Cyan", "ANSI Cyan Bold", "ANSI Cyan Underlined",
+    "ANSI White", "ANSI White Bold", "ANSI White Underlined"
+#else
     "Default Foreground", "Default Bold Foreground",
     "Default Background", "Default Bold Background",
     "Cursor Text", "Cursor Colour",
@@ -1383,7 +1432,62 @@ static const char *const colours[] = {
     "ANSI Magenta", "ANSI Magenta Bold",
     "ANSI Cyan", "ANSI Cyan Bold",
     "ANSI White", "ANSI White Bold"
+#endif
 };
+
+#ifdef TUTTYPORT
+void dlg_control_enable(union control *ctrl, void *dlg, int enable);
+static const int itemcolour[] = {
+    0, 1, 2, 0, 1, 2, 0, 0, 3, 3, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2,
+    0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2
+};
+
+static const int idxcolour[2][2][2][34] = {
+    {
+     {
+      {0, 2, 4, 5, 6, 8, 10, 12, 14, 16,
+       18, 20, -1, -1, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1},		/* 0, 0, 0: !bold && !under && !selected */
+      {0, 2, 4, 5, 32, 33, 6, 8, 10, 12,
+       18, 20, -1, -1, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1}		/* 0, 0, 1: !bold && !under && selected */
+      },
+     {
+      {0, 22, 2, 23, 4, 5, 6, 24, 8, 25,
+       10, 26, 12, 27, 14, 28, 16, 29, 18, 30,
+       20, 31, -1, -1, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1},		/* 0, 1, 0: !bold && under && !selected */
+      {0, 22, 2, 23, 4, 5, 32, 33, 6, 24,
+       8, 25, 10, 26, 12, 27, 14, 28, 16, 29,
+       18, 30, 20, 31, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1}		/* 0, 1, 1: !bold && under && selected */
+      },
+     },
+    {
+     {
+      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+       10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+       20, 21, -1, -1, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1},		/* 1, 0, 0: bold && !under && !selected */
+      {0, 1, 2, 3, 4, 5, 32, 33, 6, 7,
+       8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+       18, 19, 20, 21, -1, -1, -1, -1, -1, -1,
+       -1, -1, -1, -1}		/* 1, 0, 1: bold && !under && selected */
+      },
+     {
+      {0, 1, 22, 2, 3, 23, 4, 5, 6, 7,
+       24, 8, 9, 25, 10, 11, 26, 12, 13, 27,
+       14, 15, 28, 16, 17, 29, 18, 19, 30, 20,
+       21, 31, -1, -1},		/* 1, 1, 0: bold && under && !selected */
+      {0, 1, 22, 2, 3, 23, 4, 5, 32, 33,
+       6, 7, 24, 8, 9, 25, 10, 11, 26, 12,
+       13, 27, 14, 15, 28, 16, 17, 29, 18, 19,
+       30, 20, 21, 31}		/* 1, 1, 1: bold && under && selected */
+      },
+     }
+};
+#endif
 
 static void colour_handler(union control *ctrl, void *dlg,
 			    void *data, int event)
@@ -1393,13 +1497,75 @@ static void colour_handler(union control *ctrl, void *dlg,
 	(struct colour_data *)ctrl->generic.context.p;
     int update = FALSE, clear = FALSE, r, g, b;
 
+#ifdef TUTTYPORT
+    if (ctrl == cd->bold_checkbox) {
+	    	conf_set_int(conf,CONF_bold_colour,1);
+		dlg_control_enable(cd->bold_checkbox, dlg,0);
+	switch (event) {
+	case EVENT_REFRESH:
+	    dlg_checkbox_set(cd->bold_checkbox, dlg, conf_get_int(conf,CONF_bold_colour) );
+	    break;
+	case EVENT_VALCHANGE:
+	    conf_set_int(conf,CONF_bold_colour, dlg_checkbox_get(cd->bold_checkbox, dlg));
+	    dlg_refresh(cd->listbox, dlg);
+	    break;
+	};
+    } else if (ctrl == cd->underline_checkbox) {
+	switch (event) {
+	case EVENT_REFRESH:
+	    dlg_checkbox_set(cd->underline_checkbox, dlg,
+			     conf_get_int(conf,CONF_under_colour) );
+	    break;
+	case EVENT_VALCHANGE:
+	    conf_set_int( conf, CONF_under_colour, dlg_checkbox_get(cd->underline_checkbox, dlg) ) ;
+	    dlg_refresh(cd->listbox, dlg);
+	    break;
+	};
+    } else if (ctrl == cd->selected_checkbox) {
+	switch (event) {
+	case EVENT_REFRESH:
+	    dlg_checkbox_set(cd->selected_checkbox, dlg, conf_get_int(conf,CONF_sel_colour) );
+	    break;
+	case EVENT_VALCHANGE:
+	    conf_set_int( conf, CONF_sel_colour, dlg_checkbox_get(cd->selected_checkbox, dlg) ) ;
+	    dlg_refresh(cd->listbox, dlg);
+	    break;
+	};
+    };
+#endif
     if (event == EVENT_REFRESH) {
 	if (ctrl == cd->listbox) {
 	    int i;
 	    dlg_update_start(ctrl, dlg);
 	    dlg_listbox_clear(ctrl, dlg);
 	    for (i = 0; i < lenof(colours); i++)
+#ifdef TUTTYPORT
+		/* This allows us to hide list items we don't need to
+		 * see: if bold-as-colour (or underline) turned off, we just hide those bold
+		 * choices to decrease user confusion. And, of course, it looks
+		 * lots cooler to have "jumping" controls. Feels more interactive. :)
+		 */
+	    {
+		switch (itemcolour[i]) {
+		case 0:
+		    dlg_listbox_add(ctrl, dlg, colours[i]);
+		    break;
+		case 1:
+		    if (conf_get_int(conf,CONF_bold_colour))
+			dlg_listbox_add(ctrl, dlg, colours[i]);
+		    break;
+		case 2:
+		    if (conf_get_int(conf,CONF_under_colour))
+			dlg_listbox_add(ctrl, dlg, colours[i]);
+		    break;
+		case 3:
+		    if (conf_get_int(conf,CONF_sel_colour))
+			dlg_listbox_add(ctrl, dlg, colours[i]);
+		};
+	    };
+#else
 		dlg_listbox_add(ctrl, dlg, colours[i]);
+#endif
 	    dlg_update_done(ctrl, dlg);
 	    clear = TRUE;
 	    update = TRUE;
@@ -1412,6 +1578,17 @@ static void colour_handler(union control *ctrl, void *dlg,
 		clear = TRUE;
 	    } else {
 		clear = FALSE;
+#ifdef TUTTYPORT
+	    /* I know this looks a bit weird, but I just had no
+	     * other choice. Other way it would break existing code and
+	     * worse yet, existing saved session structure.
+	     * This way, underline colours are stored in last 10
+	     * positions of the colours array, not breaking anything.
+	     * But the price is some weird transformations based on
+	     * predefined index array.
+	     */
+	    i = idxcolour[conf_get_int(conf,CONF_bold_colour)][conf_get_int(conf,CONF_under_colour)][conf_get_int(conf,CONF_sel_colour)][i];
+#endif
 		r = conf_get_int_int(conf, CONF_colours, i*3+0);
 		g = conf_get_int_int(conf, CONF_colours, i*3+1);
 		b = conf_get_int_int(conf, CONF_colours, i*3+2);
@@ -1432,6 +1609,10 @@ static void colour_handler(union control *ctrl, void *dlg,
 
 	    i = dlg_listbox_index(cd->listbox, dlg);
 	    if (i >= 0) {
+#ifdef TUTTYPORT
+    		i = idxcolour[conf_get_int(conf,CONF_bold_colour)][conf_get_int(conf,CONF_under_colour)][conf_get_int(conf,CONF_sel_colour)][i];
+
+#endif
 		if (ctrl == cd->redit)
 		    conf_set_int_int(conf, CONF_colours, i*3+0, cval);
 		else if (ctrl == cd->gedit)
@@ -1452,6 +1633,9 @@ static void colour_handler(union control *ctrl, void *dlg,
 	     * EVENT_CALLBACK when it's finished and allow us to
 	     * pick up the results.
 	     */
+#ifdef TUTTYPORT
+ i = idxcolour[conf_get_int(conf,CONF_bold_colour)][conf_get_int(conf,CONF_under_colour)][conf_get_int(conf,CONF_sel_colour)][i];
+#endif
 	    dlg_coloursel_start(ctrl, dlg,
 				conf_get_int_int(conf, CONF_colours, i*3+0),
 				conf_get_int_int(conf, CONF_colours, i*3+1),
@@ -1465,6 +1649,9 @@ static void colour_handler(union control *ctrl, void *dlg,
 	     * return nonzero on success, or zero if the colour
 	     * selector did nothing (user hit Cancel, for example).
 	     */
+#ifdef TUTTYPORT
+ i = idxcolour[conf_get_int(conf,CONF_bold_colour)][conf_get_int(conf,CONF_under_colour)][conf_get_int(conf,CONF_sel_colour)][i];
+#endif
 	    if (dlg_coloursel_results(ctrl, dlg, &r, &g, &b)) {
 		conf_set_int_int(conf, CONF_colours, i*3+0, r);
 		conf_set_int_int(conf, CONF_colours, i*3+1, g);
@@ -1834,20 +2021,20 @@ void setup_config_box(struct controlbox *b, int midsession,
 				    sessionsaver_handler, P(ssd));
     ssd->okbutton->button.isdefault = TRUE;
 #ifdef PERSOPORT
-    if( ConfigBoxHeight>7 ) ssd->okbutton->generic.column = 0 ; else 
+    if( GetConfigBoxHeight() > 7 ) ssd->okbutton->generic.column = 0 ; else 
 #endif
     ssd->okbutton->generic.column = 3;
 #if (defined IMAGEPORT) && (!defined FDJ) && (defined STARTBUTTON)
 	if( (!midsession)&&(!get_param("PUTTY")) ) {
 		ssd->startbutton = ctrl_pushbutton(s, "Start", NO_SHORTCUT, HELPCTX(no_help), sessionsaver_handler, P(ssd));
-		if( ConfigBoxHeight>7 ) ssd->startbutton->generic.column = 0 ; else ssd->startbutton->generic.column = 3;
+		if( GetConfigBoxHeight() > 7 ) ssd->startbutton->generic.column = 0 ; else ssd->startbutton->generic.column = 3;
 	}
 #endif
     ssd->cancelbutton = ctrl_pushbutton(s, "Cancel", 'c', HELPCTX(no_help),
 					sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = TRUE;
 #ifdef PERSOPORT
-    if( ConfigBoxHeight>7 ) ssd->cancelbutton->generic.column = 0 ; else
+    if( GetConfigBoxHeight() > 7 ) ssd->cancelbutton->generic.column = 0 ; else
 #endif
     ssd->cancelbutton->generic.column = 4;
     /* We carefully don't close the 5-column part, so that platform-
@@ -1936,7 +2123,7 @@ void setup_config_box(struct controlbox *b, int midsession,
 				sessionsaver_handler, P(ssd));
     ssd->listbox->generic.column = 0;
 #ifdef PERSOPORT
-	ssd->listbox->listbox.height = ConfigBoxHeight ;
+	ssd->listbox->listbox.height = GetConfigBoxHeight() ;
 #else
     ssd->listbox->listbox.height = 7;
 #endif
@@ -1977,7 +2164,7 @@ void setup_config_box(struct controlbox *b, int midsession,
 	ssd->delbutton = NULL;
     }
 #ifdef PERSOPORT
-	if( ConfigBoxHeight>7 ) { // On n'affiche les boutons KiTTY que si la taille de la config box le permet
+	if( GetConfigBoxHeight() > 7 ) { // On n'affiche les boutons KiTTY que si la taille de la config box le permet
 	if (!midsession) { // Bouton de creation d'un folder
 	ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
 					  HELPCTX(session_saved),
@@ -2167,7 +2354,12 @@ void setup_config_box(struct controlbox *b, int midsession,
 		      conf_radiobutton_handler,
 		      I(CONF_funky_type),
 		      "ESC[n~", I(0), "Linux", I(1), "Xterm R6", I(2),
-		      "VT400", I(3), "VT100+", I(4), "SCO", I(5), NULL);
+		      "VT400", I(3), "VT100+", I(4), "SCO", I(5), 
+#ifdef TUTTYPORT
+//		      "AT&T 513", I(6), 
+//		      "Sun Xterm", I(8),
+#endif
+		      NULL);
 
     s = ctrl_getset(b, "Terminal/Keyboard", "appkeypad",
 		    "Application keypad settings:");
@@ -2362,10 +2554,10 @@ void setup_config_box(struct controlbox *b, int midsession,
 		 conf_editbox_handler, I(CONF_ypos), I(-1) ) ; // dlg_stdeditbox_handler, I(offsetof(Config,ypos)), I(-1));
     ctrl_editbox(s, "Left:", NO_SHORTCUT, 20,
 		 HELPCTX(no_help),
-		 conf_editbox_handler, I(CONF_ypos), I(-1) ) ; // dlg_stdeditbox_handler, I(offsetof(Config,xpos)), I(-1));
+		 conf_editbox_handler, I(CONF_xpos), I(-1) ) ; // dlg_stdeditbox_handler, I(offsetof(Config,xpos)), I(-1));
 	}
 
-    if( !get_param("PUTTY") && (get_param("ICON")>0) ) {
+    if( !get_param("PUTTY") && (GetIconeFlag()>0) ) {
     s = ctrl_getset(b, "Window/Appearance", "icon",
 		    "Define the window icon");
     c = ctrl_editbox(s, "Icon (from internal resources)", NO_SHORTCUT, 40,
@@ -2624,6 +2816,19 @@ void setup_config_box(struct controlbox *b, int midsession,
                       "The colour", I(2),
                       "Both", I(3),
                       NULL);
+#ifdef TUTTYPORT
+    cd = (struct colour_data *) ctrl_alloc(b, sizeof(struct colour_data));
+    memset(cd , 0, sizeof(*cd ));
+    cd->bold_checkbox =
+	ctrl_checkbox(s, "Bolded text is a different colour", NO_SHORTCUT,
+		      HELPCTX(no_help), colour_handler, P(cd));
+    cd->underline_checkbox =
+	ctrl_checkbox(s, "Underlined text is a different colour", NO_SHORTCUT,
+		      HELPCTX(no_help), colour_handler, P(cd));
+    cd->selected_checkbox =
+	ctrl_checkbox(s, "Selected text is a different colour", NO_SHORTCUT,
+		      HELPCTX(no_help), colour_handler, P(cd));
+#endif
 
     str = dupprintf("Adjust the precise colours %s displays", appname);
     s = ctrl_getset(b, "Window/Colours", "adjust", str);
@@ -2632,7 +2837,9 @@ void setup_config_box(struct controlbox *b, int midsession,
 	      " Modify button to change its appearance.",
 	      HELPCTX(colours_config));
     ctrl_columns(s, 2, 67, 33);
+#ifndef TUTTYPORT
     cd = (struct colour_data *)ctrl_alloc(b, sizeof(struct colour_data));
+#endif
     cd->listbox = ctrl_listbox(s, "Select a colour to adjust:", 'u',
 			       HELPCTX(colours_config), colour_handler, P(cd));
     cd->listbox->generic.column = 0;
@@ -2718,6 +2925,19 @@ void setup_config_box(struct controlbox *b, int midsession,
 			     HELPCTX(connection_loghost),
 			     conf_editbox_handler, I(CONF_loghost), I(1));
 	    }
+#ifdef PORTKNOCKINGPORT
+    // port knocking panel
+     if( !get_param("PUTTY") ) {
+//    ctrl_settitle(b, "Connection/Port knocking", "Options controlling port knocking") ;
+    s = ctrl_getset(b, "Connection", "PortKnocking",
+			"Port knocking sequence");
+    ctrl_editbox(s, "Sequence:",  NO_SHORTCUT, 100,
+		 HELPCTX(no_help),
+		 conf_editbox_handler, I(CONF_portknockingoptions), I(1));
+    ctrl_text(s, "The sequence is a list of port:protocol separated by comma. Valid protocols are tcp and udp.",HELPCTX(no_help));
+    ctrl_text(s, "Ex: 2001:tcp, 2002:udp",HELPCTX(no_help));
+	}
+#endif
 	}
 
 	/*
@@ -2750,19 +2970,21 @@ void setup_config_box(struct controlbox *b, int midsession,
 	    }
 #ifdef PERSOPORT
 	if( !get_param("PUTTY" ) ) {
-	//s = ctrl_getset(b, "Connection", "automatic", "Auto-connect");
 	c = ctrl_editbox(s, "Auto-login password", NO_SHORTCUT, 50,
 		     HELPCTX(no_help),
-		     conf_editbox_handler, I(CONF_password), I(1) ) ; //dlg_stdeditbox_handler, I(offsetof(Config,password)), I(sizeof(((Config *)0)->password)));
+		     conf_editbox_handler, I(CONF_password), I(1) ) ;
 	c->editbox.password = 1;
 	ctrl_editbox(s, "Command", NO_SHORTCUT, 74,
 		     HELPCTX(no_help),
-		     conf_editbox_handler, I(CONF_autocommand), I(1) ) ; // dlg_stdeditbox_handler, I(offsetof(Config,autocommand)),  I(sizeof(((Config *)0)->autocommand)));
+		     conf_editbox_handler, I(CONF_autocommand), I(1) ) ; 
 	ctrl_filesel(s, "Login script file:", NO_SHORTCUT,
 			"Scr Files (*.scr, *.txt)\0*.scr;*.txt\0All Files (*.*)\0*\0\0\0"
-			 ,FALSE, "Select login script file",
+			 ,FALSE, "Select the login script file to load",
 			 HELPCTX(no_help),
-			 conf_filesel_handler, I(CONF_scriptfile) ) ; // dlg_stdfilesel_handler, I(offsetof(Config, scriptfile)));
+			 conf_scriptfilesel_handler, I(CONF_scriptfile) ) ; 
+	ctrlScriptFileContentEdit = ctrl_editbox(s, "Login script content:", NO_SHORTCUT, 60,
+		     HELPCTX(no_help),
+		     conf_editbox_handler, I(CONF_scriptfilecontent), I(1) ) ;
 	}
 #endif
 
@@ -3419,6 +3641,17 @@ void setup_config_box(struct controlbox *b, int midsession,
 		     conf_editbox_handler, I(CONF_szoptions), I(1)); // dlg_stdeditbox_handler, I(offsetof(Config,szoptions)),I(sizeof(((Config *)0)->szoptions)));
 /**/
 	}
+#endif
+#ifdef PERSOPORT
+	if( !get_param("PUTTY") ) {
+		ctrl_settitle(b, "Comment", "Options comments");
+		s = ctrl_getset(b, "Comment", "freecomment",
+			"Now you can add comments on your session");
+		ctrl_editbox(s, "Comment", NO_SHORTCUT, 100,
+		 HELPCTX(no_help),
+		 conf_editbox_handler, I(CONF_comment),
+		 I(1));
+		}
 #endif
 }
 

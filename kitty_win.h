@@ -9,7 +9,8 @@ void SetTransparency( HWND hwnd, int value ) ;
 void GetOSInfo( char * version ) ;
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;
-
+int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
+	
 // Centre un dialog au milieu de la fenetre parent
 void CenterDlgInParent(HWND hDlg) ;
 
@@ -27,5 +28,8 @@ void RunCommand( HWND hwnd, char * cmd ) ;
 
 // Démarre l'éditeur embarqué
 void RunPuttyEd( HWND hwnd ) ;
+
+// Verifie si une mise a jour est disponible sur le site web
+void CheckVersionFromWebSite( HWND hwnd ) ;
 
 #endif

@@ -37,4 +37,6 @@ void urlhack_set_regular_expression(int mode, const char* expression) ;
 void urlhack_init();
 void urlhack_cleanup();
 
+void SetHyperlinkFlag( const int flag ) ;
+
 #endif // _URLHACK_H

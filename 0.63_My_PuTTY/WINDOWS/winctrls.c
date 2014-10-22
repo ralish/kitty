@@ -2729,3 +2729,91 @@ void dlg_directorysel_get(union control *ctrl, void *dlg, Filename *fn)
     fn->path[lenof(fn->path)-1] = '\0';
 }
 #endif
+#ifdef TUTTYPORT
+
+void dlg_control_hide(union control *ctrl, void *dlg)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+
+    if (dp && ctrl) {
+	HWND ctl = GetDlgItem(dp->hwnd, c->base_id + 1);
+	if (ctl)
+	    ShowWindow(ctl, FALSE);
+    };
+};
+
+void dlg_control_show(union control *ctrl, void *dlg)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+
+    if (dp && ctrl) {
+	HWND ctl = GetDlgItem(dp->hwnd, c->base_id + 1);
+	if (ctl)
+	    ShowWindow(ctl, TRUE);
+    };
+};
+
+void dlg_control_enable(union control *ctrl, void *dlg, int enable)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    HWND ctl;
+    int i, max;
+
+    if (dp && ctrl) {
+	switch (ctrl->generic.type) {
+	case CTRL_RADIO:
+	    max = ctrl->radio.nbuttons + 1;
+	    break;
+/*	case CTRL_SPECIALEDIT:
+	    max = 3;
+	    break;*/
+	default:
+	    max = 1;
+	};
+	for (i = 0; i < max; i++) {
+	    ctl = GetDlgItem(dp->hwnd, c->base_id + i);
+	    if (ctl)
+		EnableWindow(ctl, enable);
+	};
+    };
+};
+
+
+void dlg_specialedit_switch(union control *ctrl, void *dlg, int which)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+
+    HWND ctrl1 = GetDlgItem(dp->hwnd, c->base_id + 1);
+    HWND ctrl2 = GetDlgItem(dp->hwnd, c->base_id + 2);
+
+    if (which == 0) {
+	ShowWindow(ctrl2, SW_HIDE);
+	ShowWindow(ctrl1, SW_SHOW);
+    } else if (which == 1) {
+	ShowWindow(ctrl1, SW_HIDE);
+	ShowWindow(ctrl2, SW_SHOW);
+    };
+};
+
+void dlg_setcontroltext(union control *ctrl, void *dlg, char *stext)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    HWND ctl = GetDlgItem(dp->hwnd, c->base_id);
+
+    SetWindowText(ctl, stext);
+};
+
+/* A simple yes/no question box. Returns TRUE if yes, otherwise FALSE. */
+int dlg_yesnobox(void *dlg, const char *msg)
+{
+    struct dlgparam *dp = (struct dlgparam *) dlg;
+    int ret = MessageBox(dp->hwnd, msg, NULL,
+			 MB_YESNO | MB_ICONQUESTION);
+    return ret == IDYES ? TRUE : FALSE;
+};
+#endif

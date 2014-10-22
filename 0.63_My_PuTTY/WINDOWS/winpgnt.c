@@ -2335,8 +2335,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         if ( (fp = fopen(b, "r")) != NULL) {
             putty_path = dupstr(b);
             fclose(fp);
+#ifdef PERSOPORT
+	} else {
+		strcpy(r, "kitty.exe");
+		if ( (fp = fopen(b, "r")) != NULL) {
+			putty_path = dupstr(b);
+			fclose(fp);
+		} else
+		putty_path = NULL;
+	}
+#else
         } else
             putty_path = NULL;
+#endif
+
     }
 
     /*

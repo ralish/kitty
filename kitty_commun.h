@@ -6,7 +6,12 @@
 #include <windows.h>
 
 // Flag permettant d'activer l'acces a du code particulier permettant d'avoir plus d'info dans le kitty.dmp
-static int debug_flag = 0 ;
+extern int debug_flag ;
+
+// Flag permettant de sauvegarder automatique les cles SSH des serveurs
+// extern int AutoStoreSSHKeyFlag  ;
+int GetAutoStoreSSHKeyFlag(void) ;
+void SetAutoStoreSSHKeyFlag( const int flag ) ;
 
 // Répertoire de sauvegarde de la configuration (savemode=dir)
 extern char * ConfigDirectory ;
@@ -31,11 +36,9 @@ extern int backend_connected ;
 
 void SetSSHConnected( void ) ;
 
-// Affichage d'un message dans l'event log
-void debug_logevent( const char *fmt, ... ) ;
-
 PVOID SecureZeroMemory( PVOID ptr, SIZE_T cnt) ;
 
 // Fonction permettant de changer le statut du stockage automatique des ssh host keys
 void SetAutoStoreSSHKey( void ) ;
+
 #endif

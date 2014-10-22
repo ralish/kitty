@@ -56,6 +56,9 @@ char *appname = "PSCP";
 #else
 const char *const appname = "PSCP";
 #endif
+#ifdef PORTKNOCKINGPORT
+int ManagePortKnocking( char* host, char *portstr ) ;
+#endif
 
 /*
  * The maximum amount of queued data we accept before we stop and
@@ -530,6 +533,10 @@ static void do_cmd(char *host, char *user, char *cmd)
     conf_set_int(conf, CONF_nopty, TRUE);
 
     back = &ssh_backend;
+
+#ifdef PORTKNOCKINGPORT
+    ManagePortKnocking(conf_get_str(conf,CONF_host),conf_get_str(conf,CONF_portknockingoptions));
+#endif
 
     err = back->init(NULL, &backhandle, conf,
 		     conf_get_str(conf, CONF_host),

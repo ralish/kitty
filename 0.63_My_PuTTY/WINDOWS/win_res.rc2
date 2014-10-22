@@ -15,6 +15,8 @@ IDI_MAINICON ICON "putty.ico"
 
 #ifdef PERSOPORT
 
+IDI_FILEASSOC ICON "../../res/file_assoc/kitty_assoc.ico"
+
 #ifndef FDJ
 IDI_MAINICON_0 ICON "../../kitty.ico"
 IDI_MAINICON_1 ICON "putty.ico"
@@ -75,6 +77,8 @@ IDI_MAINICON_44 ICON "../../cthelper/puttycyg.ico"
 IDC_HOVER CURSOR "../../res/Hover.cur"
 
 IDI_PUTTY_LAUNCH	ICON "../../res/putty_launcher.ico"
+
+//IDI_NUCLEAR ICON "../../res/nuclear.ico"
 
 #define IDB_OK	1098
 
@@ -242,16 +246,12 @@ BEGIN
     LTEXT           "9bis software - http://kitty.9bis.com",
                     IDC_WEBPAGE,45,31,145,8
     LTEXT           "Contact:",IDC_STATIC,45,43,46,8
-    //LTEXT           "kitty@9bis.com",IDC_EMAIL,45,55,83,8
     LTEXT           "kitty@9bis.com",IDC_EMAIL,77,43,83,8
-    
     LTEXT           "Message",IDC_BAN,45,55,188,8
-//    DEFPUSHBUTTON   "OK",IDOK,189,49,40,14
-//    PUSHBUTTON "Licence", IDA_LICENCE, 142, 49, 40, 14
-    DEFPUSHBUTTON   "OK",IDOK, 189, 69, 40, 14
-    PUSHBUTTON "&Upgrade", IDA_WEB, 95, 69, 40, 14
-    PUSHBUTTON "&Donate", IDA_DON, 142, 69, 40, 14
-    PUSHBUTTON "Licence", IDA_LICENCE, 48, 69, 40, 14
+    DEFPUSHBUTTON "OK", IDOK, 189, 69, 50, 14
+    PUSHBUTTON "Licence", IDA_LICENCE, 18, 69, 50, 14
+    PUSHBUTTON "Check &Update", IDA_WEB, 75, 69, 50, 14
+    PUSHBUTTON "&Donate", IDA_DON, 132, 69, 50, 14
 END
 
 #include "../../notepad.rc"

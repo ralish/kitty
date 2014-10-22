@@ -15,7 +15,13 @@ static text_region **link_regions;
 static unsigned int link_regions_len;
 static unsigned int link_regions_current_pos;
 
+/*
 const char* urlhack_default_regex = "(((https?|ftp):\\/\\/)|www\\.)(([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)|localhost|([a-zA-Z0-9\\-]+\\.)*[a-zA-Z0-9\\-]+\\.(aero|asia|biz|cat|com|coop|info|int|jobs|mobi|museum|name|net|org|post|pro|tel|travel|xxx|edu|gov|mil|[a-zA-Z][a-zA-Z]))(:[0-9]+)?((\\/|\\?)[^ \"]*[^ ,;\\.:\">)])?";
+
+// Simplification de la regex par defaut pour essayer de résoudre le problème de crash (fuite mémoire) avec le patch hyperlink
+*/
+
+const char* urlhack_default_regex =  "(((https?|ftp):\\/\\/)|www\\.)(([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)|localhost|([a-zA-Z0-9\\-]+\\.)*[a-zA-Z0-9\\-]+\\.(com|net|org|info|biz|gov|name|edu|[a-zA-Z][a-zA-Z]))(:[0-9]+)?((\\/|\\?)[^ \"]*[^ ,;\\.:\">)])?";
 
 
 const char* urlhack_liberal_regex =
@@ -134,7 +140,7 @@ void urlhack_link_regions_clear()
 
 static int urlhack_disabled = 0;
 static int is_regexp_compiled = 0;
-static regexp* urlhack_rx;
+static regexp* urlhack_rx=NULL;
 
 static char *window_text;
 static int window_text_len;
@@ -154,7 +160,8 @@ void urlhack_init()
     }
 
     /* Start with default terminal size */
-    window_text_len = 80*24+1;
+    //window_text_len = 80*24+1;
+    window_text_len = 500*300+1;
     window_text = snewn(window_text_len, char);
     urlhack_reset();
 }
@@ -186,32 +193,21 @@ static void rtfm(char *error)
 {
     char std_msg[] = "The following error occured when compiling the regular expression\n" \
         "for the hyperlink support. Hyperlink detection is disabled during\n" \
-        "this session (restart PuTTY Tray to try again).\n\n";
+        "this session (restart to try again).\n\n";
 
     char *full_msg = dupprintf("%s%s", std_msg, error);
 
-    MessageBox(0, full_msg, "PuTTY Tray Error", MB_OK);
+	urlhack_disabled = 1 ;
+	//SetHyperlinkFlag(0);
+	
+    MessageBox(0, full_msg, "Hyperlink patch error", MB_OK);
     free(full_msg);
+	
 }
-/*
-void urlhack_set_regular_expression(const char* expression)
-{
-    is_regexp_compiled = 0;
-    urlhack_disabled = 0;
-
-    set_regerror_func(rtfm);
-    urlhack_rx = regcomp((char*)(expression));
-
-    if (urlhack_rx == 0) {
-        urlhack_disabled = 1;
-    }
-
-    is_regexp_compiled = 1;
-}
-*/
 
 void urlhack_set_regular_expression(int mode, const char* expression)
 {
+#ifndef NO_HYPERLINK
     const char *to_use=NULL;
     switch (mode) {
     case URLHACK_REGEX_CUSTOM:
@@ -226,9 +222,13 @@ void urlhack_set_regular_expression(int mode, const char* expression)
     default:
         assert(!"illegal default regex setting");
     }
-
+   
     is_regexp_compiled = 0;
     urlhack_disabled = 0;
+    if (urlhack_rx != NULL) { 
+	    regfree(urlhack_rx);
+	    urlhack_rx=NULL; 
+	    }
 
     set_regerror_func(rtfm);
     urlhack_rx = regcomp((char*)(to_use));
@@ -238,22 +238,19 @@ void urlhack_set_regular_expression(int mode, const char* expression)
     }
 
     is_regexp_compiled = 1;
+#endif
 }
 
 void urlhack_go_find_me_some_hyperlinks(int screen_width)
 {
+#ifndef NO_HYPERLINK
     char* text_pos;
-
     if (urlhack_disabled != 0) return;
-
     if (is_regexp_compiled == 0) {
         urlhack_set_regular_expression(URLHACK_REGEX_CLASSIC,urlhack_default_regex);
     }
-
     urlhack_link_regions_clear();
-
     text_pos = window_text;
-
     while (regexec(urlhack_rx, text_pos) == 1) {
         char* start_pos = *urlhack_rx->startp[0] == ' ' ? urlhack_rx->startp[0] + 1: urlhack_rx->startp[0];
 
@@ -264,9 +261,9 @@ void urlhack_go_find_me_some_hyperlinks(int screen_width)
 
         if (x0 >= screen_width) x0 = screen_width - 1;
         if (x1 >= screen_width) x1 = screen_width - 1;
-
         urlhack_add_link_region(x0, y0, x1, y1);
 
         text_pos = urlhack_rx->endp[0] + 1;
     }
+#endif
 }

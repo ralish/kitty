@@ -442,6 +442,7 @@ return 1 ;
 					RegDeleteValue( hSubKey, "BgImageAbsoluteX" ) ;
 					RegDeleteValue( hSubKey, "BgImageAbsoluteY" ) ;
 					RegDeleteValue( hSubKey, "BgImagePlacement" ) ;
+					RegDeleteValue( hSubKey, "Fullscreen" ) ;
 					RegDeleteValue( hSubKey, "Maximize" ) ;
 					RegDeleteValue( hSubKey, "SendToTray" ) ;
 					RegDeleteValue( hSubKey, "SaveOnExit" ) ;
@@ -456,9 +457,13 @@ return 1 ;
 					RegDeleteValue( hSubKey, "LogTimestamp" ) ;
 					RegDeleteValue( hSubKey, "Notes" ) ;
 					RegDeleteValue( hSubKey, "CygtermCommand" ) ;
+					RegDeleteValue( hSubKey, "CygtermAltMetabit" ) ;
+					RegDeleteValue( hSubKey, "CygtermAutoPath" ) ;
+					RegDeleteValue( hSubKey, "Cygterm64" ) ;
 					RegDeleteValue( hSubKey, "WakeupReconnect" ) ;
 					RegDeleteValue( hSubKey, "FailureReconnect" ) ;
 					RegDeleteValue( hSubKey, "Scriptfile" ) ;
+					RegDeleteValue( hSubKey, "ScriptfileContent" ) ;
 					RegDeleteValue( hSubKey, "TransparencyValue" ) ;
 					RegDeleteValue( hSubKey, "TermXPos" ) ;
 					RegDeleteValue( hSubKey, "TermYPos" ) ;
@@ -479,6 +484,20 @@ return 1 ;
 					RegDeleteValue( hSubKey, "szOptions" ) ;
 					RegDeleteValue( hSubKey, "zDownloadDir" ) ;
 					RegDeleteValue( hSubKey, "SaveWindowPos" ) ;
+					RegDeleteValue( hSubKey, "WindowState" ) ;
+					RegDeleteValue( hSubKey, "ForegroundOnBell" ) ;
+					RegDeleteValue( hSubKey, "CtrlTabSwitch" ) ;
+					RegDeleteValue( hSubKey, "Comment" ) ;
+					RegDeleteValue( hSubKey, "LogTimeRotation" ) ;
+					RegDeleteValue( hSubKey, "PortKnocking" ) ;
+					RegDeleteValue( hSubKey, "WindowClosable" ) ;
+					RegDeleteValue( hSubKey, "WindowMinimizable" ) ;
+					RegDeleteValue( hSubKey, "WindowMaximizable" ) ;
+					RegDeleteValue( hSubKey, "WindowHasSysMenu" ) ;
+					RegDeleteValue( hSubKey, "DisableBottomButtons" ) ;
+					RegDeleteValue( hSubKey, "BoldAsColour" ) ;
+					RegDeleteValue( hSubKey, "UnderlinedAsColour" ) ;
+					RegDeleteValue( hSubKey, "SelectedAsColour" ) ;
 					//RegDeleteValue( hSubKey, "" ) ;
  					RegCloseKey(hSubKey) ;
 					}
@@ -539,8 +558,30 @@ void CreateSSHHandler() {
 
 	sprintf(buffer, "\"%s\" -load \"%%1\"", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\shell\\open\\command", "", buffer ) ;
-	}
+		}
 
+// Creation de l'association de fichiers *.ktx
+void CreateFileAssoc() {
+	char path[1024], buffer[1024] ;
+
+	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
+
+	// Association des fichers .ktx avec l'application KiTTY
+	// Création d l'application
+	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "", "KiTTY connection manager") ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "FriendlyTypeName", "@KiTTY, -120") ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\CurVer", "", "kitty.connect.1") ;
+	sprintf(buffer, "%s", path ) ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\DefaultIcon", "", buffer);
+	sprintf(buffer, "\"%s\" -kload \"%%1\"", path ) ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\shell\\open\\command", "", buffer) ;
+	// Création de l'association de fichiers
+	RegTestOrCreate( HKEY_CLASSES_ROOT, ".ktx", "", "kitty.connect.1") ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, ".ktx", "PerceivedType", "Connection") ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, ".ktx", "Content Type", "connection/ssh") ;
+	RegTestOrCreate( HKEY_CLASSES_ROOT, ".ktx", "OpenWithProgids", "kitty.connect.1") ;
+}
+	
 // Vérifie l'existance de la clé de KiTTY sinon la copie depuis PuTTY
 void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) { 
 	HKEY hKey ;
@@ -556,3 +597,24 @@ void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) {
 		}
 	}
 
+
+	
+/******
+Supprimer toute trace de KiTTY dans le registre.
+Ecrire et exécuter un fichier utf-8 .reg contenant les lignes:
+
+Windows Registry Editor Version 5.00
+
+[-HKEY_CURRENT_USER\Software\9bis.com\KiTTY]
+
+[-HKEY_CLASSES_ROOT\telnet]
+
+[-HKEY_CLASSES_ROOT\ssh]
+
+[-HKEY_CLASSES_ROOT\putty]
+
+[-HKEY_CLASSES_ROOT\kitty.connect.1]
+
+[-HKEY_CLASSES_ROOT\.ktx]
+
+******/

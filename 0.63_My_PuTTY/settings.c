@@ -575,8 +575,19 @@ void save_open_settings(void *sesskey, Conf *conf)
     write_setting_i(sesskey, "ANSIColour", conf_get_int(conf, CONF_ansi_colour));
     write_setting_i(sesskey, "Xterm256Colour", conf_get_int(conf, CONF_xterm_256_colour));
     write_setting_i(sesskey, "BoldAsColour", conf_get_int(conf, CONF_bold_style)-1);
-
+#ifdef TUTTYPORT
+    write_setting_i(sesskey, "WindowClosable", conf_get_int(conf, CONF_window_closable) );
+    write_setting_i(sesskey, "WindowMinimizable", conf_get_int(conf, CONF_window_minimizable) );
+    write_setting_i(sesskey, "WindowMaximizable", conf_get_int(conf, CONF_window_maximizable) );
+    write_setting_i(sesskey, "WindowHasSysMenu", conf_get_int(conf, CONF_window_has_sysmenu) );
+    write_setting_i(sesskey, "DisableBottomButtons", conf_get_int(conf, CONF_bottom_buttons) );
+    write_setting_i(sesskey, "BoldAsColourTest", conf_get_int(conf, CONF_bold_colour) );
+    write_setting_i(sesskey, "UnderlinedAsColour", conf_get_int(conf, CONF_under_colour) );
+    write_setting_i(sesskey, "SelectedAsColour", conf_get_int(conf, CONF_sel_colour) );
+    for (i = 0; i < NCFGCOLOURS; i++) {
+#else
     for (i = 0; i < 22; i++) {
+#endif
 	char buf[20], buf2[30];
 	sprintf(buf, "Colour%d", i);
 	sprintf(buf2, "%d,%d,%d",
@@ -684,14 +695,13 @@ void save_open_settings(void *sesskey, Conf *conf)
 	write_setting_i(sesskey, "HyperlinkBrowserUseDefault", conf_get_int(conf, CONF_url_defbrowser));
 	write_setting_filename(sesskey, "HyperlinkBrowser", conf_get_filename(conf, CONF_url_browser));
 	write_setting_i(sesskey, "HyperlinkRegularExpressionUseDefault", conf_get_int(conf, CONF_url_defregex));
-	write_setting_s(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
-
 #ifndef NO_HYPERLINK
 	if( !strcmp(conf_get_str(conf, CONF_url_regex),"@°@°@NO REGEX--") ) 
 		write_setting_s(sesskey, "HyperlinkRegularExpression", urlhack_default_regex ) ;
 	else
 		write_setting_s(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
 #else
+	write_setting_s(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
 #endif
 #endif
 #ifdef IVPORT
@@ -747,7 +757,11 @@ void save_open_settings(void *sesskey, Conf *conf)
     write_setting_i(sesskey, "Icone", conf_get_int(conf, CONF_icone) /*cfg->icone*/);
     //write_setting_s(sesskey, "IconeFile", conf_get_str(conf, CONF_iconefile) /*cfg->iconefile*/);
     write_setting_filename(sesskey, "IconeFile", conf_get_filename(conf, CONF_iconefile) /*cfg->iconefile*/);
-    write_setting_filename(sesskey, "Scriptfile", conf_get_filename(conf, CONF_scriptfile) /*cfg->scriptfile*/);
+    Filename * fn = filename_from_str( "" ) ;
+    conf_set_filename(conf,CONF_scriptfile,fn);
+    write_setting_filename(sesskey, "Scriptfile", conf_get_filename(conf, CONF_scriptfile) /*cfg->scriptfile*/);  // C'est le contenu uniquement qui est important a sauvegarder
+    filename_free(fn);
+    write_setting_s(sesskey, "ScriptfileContent", conf_get_str(conf, CONF_scriptfilecontent) );
     write_setting_s(sesskey, "AntiIdle", conf_get_str(conf, CONF_antiidle) /*cfg->antiidle*/);
     write_setting_s(sesskey, "LogTimestamp", conf_get_str(conf, CONF_logtimestamp) /*cfg->logtimestamp*/);
     write_setting_s(sesskey, "Autocommand", conf_get_str(conf, CONF_autocommand) /*cfg->autocommand*/);
@@ -763,12 +777,15 @@ void save_open_settings(void *sesskey, Conf *conf)
     sprintf( PassKey, "%s%sKiTTY", conf_get_str(conf, CONF_host)/*cfg->host*/, conf_get_str(conf, CONF_termtype)/*cfg->termtype*/ ) ;
     char pst[128] ;
     strcpy( pst, conf_get_str(conf, CONF_password ) );
-    cryptstring( pst /*cfg->password*/, PassKey ) ;
-    write_setting_s(sesskey, "Password", pst /*cfg->password*/);
+    MASKPASS(pst);
+    cryptstring( pst, PassKey ) ;
+    write_setting_s(sesskey, "Password", pst);
     memset(pst,0,strlen(pst));
-    //decryptstring( pst /*cfg->password*/, PassKey ) ;
-    //conf_set_str( conf, CONF_password, pst) ;
     write_setting_i(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
+    write_setting_s(sesskey, "Comment", conf_get_str(conf, CONF_comment) );
+#endif
+#ifdef PORTKNOCKINGPORT
+	write_setting_s(sesskey, "PortKnocking", conf_get_str(conf, CONF_portknockingoptions) );
 #endif
 }
 
@@ -1034,7 +1051,26 @@ void load_open_settings(void *sesskey, Conf *conf)
     gppi(sesskey, "ANSIColour", 1, conf, CONF_ansi_colour);
     gppi(sesskey, "Xterm256Colour", 1, conf, CONF_xterm_256_colour);
     i = gppi_raw(sesskey, "BoldAsColour", 0); conf_set_int(conf, CONF_bold_style, i+1);
-
+#ifdef TUTTYPORT
+    gppi(sesskey, "WindowClosable", 1, conf, CONF_window_closable);
+    gppi(sesskey, "WindowMinimizable", 1, conf, CONF_window_minimizable);
+    gppi(sesskey, "WindowMaximizable", 1, conf, CONF_window_maximizable);
+    gppi(sesskey, "WindowHasSysMenu", 1, conf, CONF_window_has_sysmenu);
+    gppi(sesskey, "DisableBottomButtons", 1, conf, CONF_bottom_buttons);
+    gppi(sesskey, "BoldAsColourTest", 1, conf, CONF_bold_colour);
+    gppi(sesskey, "UnderlinedAsColour", 0, conf, CONF_under_colour);
+    gppi(sesskey, "SelectedAsColour", 0, conf, CONF_sel_colour);
+    for (i = 0; i < NCFGCOLOURS; i++) {
+	static const char *const defaults[NCFGCOLOURS] = {
+	    "187,187,187", "255,255,255", "0,0,0", "85,85,85", "0,0,0",
+	    "0,255,0", "0,0,0", "85,85,85", "187,0,0", "255,85,85",
+	    "0,187,0", "85,255,85", "187,187,0", "255,255,85", "0,0,187",
+	    "85,85,255", "187,0,187", "255,85,255", "0,187,187",
+	    "85,255,255", "187,187,187", "255,255,255", "187,187,187",
+	    "0,0,0", "0,0,0", "187,0,0", "0,187,0", "187,187,0", "0,0,187",
+	    "187,0,187", "0,187,187", "187,187,187", "0,0,0", "187,187,187"
+	};
+#else
     for (i = 0; i < 22; i++) {
 	static const char *const defaults[] = {
 	    "187,187,187", "255,255,255", "0,0,0", "85,85,85", "0,0,0",
@@ -1043,6 +1079,7 @@ void load_open_settings(void *sesskey, Conf *conf)
 	    "85,85,255", "187,0,187", "255,85,255", "0,187,187",
 	    "85,255,255", "187,187,187", "255,255,255"
 	};
+#endif
 	char buf[20], *buf2;
 	int c0, c1, c2;
 	sprintf(buf, "Colour%d", i);
@@ -1253,11 +1290,16 @@ void load_open_settings(void *sesskey, Conf *conf)
     //gpps(sesskey, "IconeFile", "", conf, CONF_iconefile /*cfg->iconefile, sizeof(cfg->iconefile)*/);
     gppfile(sesskey, "IconeFile", conf, CONF_iconefile /*cfg->iconefile, sizeof(cfg->iconefile)*/);
     gppfile(sesskey, "Scriptfile", conf, CONF_scriptfile /*&cfg->scriptfile*/);
+    Filename * fn = filename_from_str( "" ) ;
+    conf_set_filename(conf,CONF_scriptfile,fn);
+    filename_free(fn);
+    gpps(sesskey, "ScriptfileContent", "", conf, CONF_scriptfilecontent );
     gpps(sesskey, "AntiIdle", "", conf, CONF_antiidle /*cfg->antiidle, sizeof(cfg->antiidle)*/);
     gpps(sesskey, "LogTimestamp", "", conf, CONF_logtimestamp /*cfg->logtimestamp, sizeof(cfg->logtimestamp)*/);
     gpps(sesskey, "Autocommand", "", conf, CONF_autocommand /*cfg->autocommand, sizeof(cfg->autocommand)*/);
     gpps(sesskey, "AutocommandOut", "", conf, CONF_autocommandout /*cfg->autocommandout, sizeof(cfg->autocommandout)*/);
     gpps(sesskey, "Folder", "", conf, CONF_folder /*cfg->folder, sizeof(cfg->folder)*/);
+    if( strlen(conf_get_str(conf, CONF_folder)) == 0 ) { conf_set_str( conf, CONF_folder, "Default" ) ; }
     gppi(sesskey, "LogTimeRotation", 0, conf, CONF_logtimerotation /*&cfg->logtimerotation*/);
     gppi(sesskey, "TermXPos", -1, conf, CONF_xpos /*&cfg->xpos*/);
     gppi(sesskey, "TermYPos", -1, conf, CONF_ypos /*&cfg->ypos*/);
@@ -1266,27 +1308,33 @@ void load_open_settings(void *sesskey, Conf *conf)
     gppi(sesskey, "ForegroundOnBell", 0, conf, CONF_foreground_on_bell /*&cfg->foreground_on_bell*/);
 
     char PassKey[1024] = "" ;
-    sprintf( PassKey, "%s%sKiTTY", conf_get_str(conf, CONF_host)/*cfg->host*/, conf_get_str(conf, CONF_termtype)/*cfg->termtype*/ ) ;
-    gpps(sesskey, "Password", "", conf, CONF_password /*cfg->password, sizeof(cfg->password)*/);
+    sprintf( PassKey, "%s%sKiTTY", conf_get_str(conf, CONF_host), conf_get_str(conf, CONF_termtype) ) ;
+    gpps(sesskey, "Password", "", conf, CONF_password );
     char pst[128] ;
-    strcpy( pst, conf_get_str( conf, CONF_password ) );
+    strcpy( pst, conf_get_str( conf, CONF_password ) ) ;
     decryptstring( pst, PassKey ) ;
     
-    if( strlen( pst /*cfg->password*/ ) > 0 ) {
+    if( strlen( pst ) > 0 ) {
 	FILE *fp ;
 	if( ( fp = fopen( "kitty.password", "r") ) != NULL ) { // Affichage en clair du password dans le fichier kitty.password si celui-ci existe
 		fclose( fp ) ;
 		if( ( fp = fopen( "kitty.password", "w" ) ) != NULL ) {
-			fprintf( fp, "%s", pst /*cfg->password*/ ) ;
+			fprintf( fp, "%s", pst ) ;
 			fclose( fp ) ;
 			}
 		}
 	}
-    //MASKPASS(pst);
-    conf_set_str( conf, CONF_password, pst ) ; // decryptstring( cfg->password, PassKey ) ;
+    MASKPASS(pst);
+    conf_set_str( conf, CONF_password, pst ) ;
+    
     memset(pst,0,strlen(pst));
     gppi(sesskey, "CtrlTabSwitch", 0, conf, CONF_ctrl_tab_switch);
+    gpps(sesskey, "Comment", "", conf, CONF_comment );
 #endif
+#ifdef PORTKNOCKINGPORT
+	gpps(sesskey, "PortKnocking", "", conf, CONF_portknockingoptions );
+#endif
+
 }
 
 void do_defaults(char *session, Conf *conf)
@@ -1379,3 +1427,6 @@ void get_sesslist(struct sesslist *list, int allocate)
 	list->sessions = NULL;
     }
 }
+#ifdef PERSOPORT
+#include "../kitty_settings.c"
+#endif
