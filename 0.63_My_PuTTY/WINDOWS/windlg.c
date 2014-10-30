@@ -243,7 +243,7 @@ static int CALLBACK AboutProc(HWND hwnd, UINT msg,
 #endif
 		
 		//sprintf( buffer, "That's all folks ! version - %s", BuildVersionTime ) ;
-		sprintf( buffer, "KiTTY - %s", BuildVersionTime ) ;
+		sprintf( buffer, "GroTTY - %s", BuildVersionTime ) ;
 		SetDlgItemText(hwnd,IDA_VERSION,buffer);
         
 		str = dupprintf("About %s That's all folks !", appname);

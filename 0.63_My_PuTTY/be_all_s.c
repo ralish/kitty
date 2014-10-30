@@ -15,7 +15,7 @@
  * declarations of appname, for as long as I can...
  */
 #if (defined PERSOPORT) && (!defined FDJ)
-char *appname = "KiTTY";
+char *appname = "GroTTY";
 #else
 const char *const appname = "PuTTY";
 #endif
