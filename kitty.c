@@ -13,6 +13,8 @@
 
 // Include specifiques Windows (windows.h doit imperativement etre declare en premier)
 #include <windows.h>
+#include <ws2def.h>
+#include <winsock2.h>
 #include <iphlpapi.h>
 #include <psapi.h>
 

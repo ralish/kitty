@@ -129,7 +129,8 @@ CFLAGS = -Wall -O2 -D_WINDOWS -DWIN32S_COMPAT -D$(FDJFLAG) \
 		-D_NO_OLDNAMES -DNO_MULTIMON -DNO_HTMLHELP -DNO_SECUREZEROMEMORY -I.././ -I../../ \
 		-I../charset/ -I../windows/ -I../unix/ -I../mac/ \
 		-I../macosx \
-		-I../../sc -I../../url -I../../wincrypt
+		-I../../sc -I../../url -I../../wincrypt \
+		-DSECURITY_WIN32
 CFLAGS_PLINK = -Wall -O2 -D_WINDOWS -DWIN32S_COMPAT \
 		-DPERSOPORT -DPUTTYCYG -DRECONNECTPORT \
 		-D_NO_OLDNAMES -DNO_MULTIMON -DNO_HTMLHELP -I../. \
